@@ -5,6 +5,7 @@
  *  ۳) Wake Lock: جلوگیری از خاموش شدن صفحه در «حالت همیشه‌روشن».
  */
 import { loadConfig } from './settings';
+import { isNativeApp, syncNativeReminders } from './native';
 import { bindWakeLockReacquire, engineStatus, releaseWakeLock, requestWakeLock, runAutoSend, type EngineResult } from './engine';
 
 export const TICK_MS = 60_000;
@@ -41,6 +42,7 @@ class Scheduler {
       const r = await runAutoSend(reason);
       this.ticks++;
       this.emit(r);
+      await this.syncNative();
       return r;
     } catch (e) {
       const r = {
@@ -57,6 +59,14 @@ class Scheduler {
     }
   }
 
+  /** زمان‌بندی اعلان‌های بومی اندروید (بی‌اثر در مرورگر) */
+  async syncNative(): Promise<void> {
+    if (!isNativeApp()) return;
+    try {
+      await syncNativeReminders(180);
+    } catch { /* اعلان بومی اختیاری است */ }
+  }
+
   async start(): Promise<void> {
     const cfg = await loadConfig();
     if (!cfg.background.enabled) return;
@@ -67,6 +77,7 @@ class Scheduler {
     this.timer = setInterval(() => void this.runNow('interval'), TICK_MS);
     if (cfg.background.wakeLock) await requestWakeLock();
     if (cfg.background.periodicSync) await this.registerPeriodic();
+    void this.syncNative();
   }
 
   async stop(): Promise<void> {

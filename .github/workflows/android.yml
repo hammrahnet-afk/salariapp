@@ -1,0 +1,124 @@
+name: ساخت APK اندروید
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'شماره نسخه (بدون v)'
+        required: false
+        default: '1.0.0'
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-apk
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: دریافت کد
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: نصب Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: نصب جاوا ۲۱
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: آماده‌سازی Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: نصب وابستگی‌ها
+        run: npm ci --no-audit --no-fund
+
+      - name: اجرای تست‌ها
+        run: npm test
+
+      - name: ساخت نسخه وب
+        run: npm run build
+
+      - name: همگام‌سازی با پروژه اندروید
+        run: npx cap sync android
+
+      - name: ساخت کلید امضا (فقط بار اول)
+        run: |
+          cd android/app
+          if [ ! -f salari-release.keystore ]; then
+            keytool -genkeypair -v \
+              -keystore salari-release.keystore \
+              -alias salari \
+              -keyalg RSA -keysize 2048 -validity 10950 \
+              -storepass salari1404 -keypass salari1404 \
+              -dname "CN=Salari App, OU=Mobile, O=Salari, L=Tehran, ST=Tehran, C=IR"
+            git add -f salari-release.keystore
+            git -c user.name="salari-ci" -c user.email="ci@salari.app" \
+              commit -m "chore(android): ساخت کلید امضای ثابت برای به‌روزرسانی نسخه‌ها"
+            git push origin "HEAD:${GITHUB_REF_NAME}" || echo "پوش کلید انجام نشد (مهم نیست)"
+          fi
+
+      - name: کش Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('android/**/*.gradle', 'android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - name: ساخت APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: آماده‌سازی فایل خروجی
+        id: apk
+        run: |
+          VERSION="${{ github.event.inputs.version || '1.0.0' }}"
+          SRC=$(find android/app/build/outputs/apk/release -name "*.apk" | head -n1)
+          echo "فایل: $SRC"
+          mkdir -p out
+          cp "$SRC" "out/salariapp-$VERSION.apk"
+          ls -lh out
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: بارگذاری به‌عنوان Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: salariapp-apk
+          path: out/*.apk
+          retention-days: 90
+
+      - name: انتشار در GitHub Releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.apk.outputs.version }}"
+          TAG="v$VERSION"
+          gh release view "$TAG" >/dev/null 2>&1 || \
+            gh release create "$TAG" \
+              --title "سالاری‌اپ نسخه $VERSION" \
+              --notes "نصب اپ اندروید حسابداری لوازم خانگی سالاری‌اپ.
+
+- فایل \`salariapp-$VERSION.apk\` را روی گوشی اندروید دانلود و نصب کنید.
+- نصب از منابع ناشناس (Install unknown apps) باید برای مرورگر/مدیر فایل مجاز باشد.
+- همهٔ داده‌ها روی خود گوشی ذخیره می‌شود؛ برنامه بدون اینترنت کار می‌کند."
+          gh release upload "$TAG" "out/salariapp-$VERSION.apk" --clobber
+          echo "https://github.com/${{ github.repository }}/releases/tag/$TAG"

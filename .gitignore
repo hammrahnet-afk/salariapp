@@ -10,3 +10,15 @@ coverage
 *.log
 npm-debug.log*
 dev-dist
+
+# Android / Capacitor
+android/.gradle
+android/build
+android/app/build
+android/capacitor-cordova-android-plugins
+android/local.properties
+android/.idea
+*.hprof
+android/app/src/main/assets/public
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json

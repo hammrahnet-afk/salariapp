@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">سالاری‌اپ</string>
+    <string name="title_activity_main">سالاری‌اپ</string>
+    <string name="package_name">ir.salari.app</string>
+    <string name="custom_url_scheme">ir.salari.app</string>
+</resources>
