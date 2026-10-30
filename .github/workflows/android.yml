@@ -13,18 +13,25 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 concurrency:
   group: android-apk
   cancel-in-progress: true
 
+env:
+  LOG: ci-build.log
+
 jobs:
   build:
     name: Build APK
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 45
 
     steps:
+      - name: شروع
+        run: echo "== start $(date -u)" | tee -a "$LOG"
+
       - name: دریافت کد
         uses: actions/checkout@v4
         with:
@@ -33,8 +40,7 @@ jobs:
       - name: نصب Node
         uses: actions/setup-node@v4
         with:
-          node-version: 22
-          cache: npm
+          node-version: '22'
 
       - name: نصب جاوا ۲۱
         uses: actions/setup-java@v4
@@ -42,60 +48,76 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: آماده‌سازی Android SDK
-        uses: android-actions/setup-android@v3
+      - name: بررسی محیط
+        run: |
+          set -x
+          echo "== env $(date -u)" | tee -a "$LOG"
+          java -version 2>&1 | tee -a "$LOG"
+          node -v | tee -a "$LOG"
+          echo "ANDROID_HOME=$ANDROID_HOME" | tee -a "$LOG"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" | tee -a "$LOG"
+          ls -d "$ANDROID_HOME"/* 2>&1 | tee -a "$LOG" || true
+          ls "$ANDROID_HOME/platforms" 2>&1 | tee -a "$LOG" || true
 
       - name: نصب وابستگی‌ها
-        run: npm ci --no-audit --no-fund
+        run: |
+          echo "== npm ci $(date -u)" | tee -a "$LOG"
+          set -o pipefail
+          npm ci --no-audit --no-fund 2>&1 | tail -n 40 | tee -a "$LOG"
 
       - name: اجرای تست‌ها
-        run: npm test
+        run: |
+          echo "== tests $(date -u)" | tee -a "$LOG"
+          set -o pipefail
+          npm test 2>&1 | tail -n 30 | tee -a "$LOG"
 
       - name: ساخت نسخه وب
-        run: npm run build
+        run: |
+          echo "== web build $(date -u)" | tee -a "$LOG"
+          set -o pipefail
+          npm run build 2>&1 | tail -n 20 | tee -a "$LOG"
 
       - name: همگام‌سازی با پروژه اندروید
-        run: npx cap sync android
+        run: |
+          echo "== cap sync $(date -u)" | tee -a "$LOG"
+          set -o pipefail
+          npx cap sync android 2>&1 | tee -a "$LOG"
 
       - name: ساخت کلید امضا (فقط بار اول)
         run: |
+          echo "== keystore $(date -u)" | tee -a "$LOG"
           cd android/app
           if [ ! -f salari-release.keystore ]; then
-            keytool -genkeypair -v \
+            keytool -genkeypair \
               -keystore salari-release.keystore \
               -alias salari \
               -keyalg RSA -keysize 2048 -validity 10950 \
               -storepass salari1404 -keypass salari1404 \
-              -dname "CN=Salari App, OU=Mobile, O=Salari, L=Tehran, ST=Tehran, C=IR"
+              -dname "CN=Salari App, OU=Mobile, O=Salari, L=Tehran, ST=Tehran, C=IR" 2>&1 | tee -a "../../$LOG"
             git add -f salari-release.keystore
-            git -c user.name="salari-ci" -c user.email="ci@salari.app" commit -m "chore(android): ساخت کلید امضای ثابت برای به‌روزرسانی نسخه‌ها"
-            git push origin "HEAD:${GITHUB_REF_NAME}" || echo "پوش کلید انجام نشد (مهم نیست)"
+            git -c user.name="salari-ci" -c user.email="ci@salari.app" commit -m "chore(android): ساخت کلید امضای ثابت برای به‌روزرسانی نسخه‌ها" || true
+            git push origin "HEAD:${GITHUB_REF_NAME}" 2>&1 | tee -a "../../$LOG" || true
+          else
+            echo "کلید امضا از قبل موجود است" | tee -a "../../$LOG"
           fi
-
-      - name: کش Gradle
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('android/**/*.gradle', 'android/gradle/wrapper/gradle-wrapper.properties') }}
-          restore-keys: gradle-${{ runner.os }}-
 
       - name: ساخت APK
         working-directory: android
         run: |
+          echo "== gradle $(date -u)" | tee -a "../$LOG"
+          set -o pipefail
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon --stacktrace
+          ./gradlew assembleRelease --no-daemon --console=plain 2>&1 | tail -n 120 | tee -a "../$LOG"
 
       - name: آماده‌سازی فایل خروجی
         id: apk
         run: |
           VERSION="${{ github.event.inputs.version || '1.0.0' }}"
           SRC=$(find android/app/build/outputs/apk/release -name "*.apk" | head -n1)
-          echo "فایل ساخته‌شده: $SRC"
+          echo "فایل ساخته‌شده: ${SRC:-هیچ}" | tee -a "$LOG"
           mkdir -p out
           cp "$SRC" "out/salariapp-$VERSION.apk"
-          ls -lh out
+          ls -lh out | tee -a "$LOG"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: بارگذاری به‌عنوان Artifact
@@ -122,3 +144,18 @@ jobs:
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "سالاری‌اپ نسخه $VERSION" --notes-file release-notes.md
           gh release upload "$TAG" "out/salariapp-$VERSION.apk" --clobber
           echo "https://github.com/${{ github.repository }}/releases/tag/$TAG"
+
+      - name: ثبت گزارش در ایشو (در صورت خطا)
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          {
+            echo "### ساخت APK ناموفق بود — اجرا \`${{ github.run_id }}\`"
+            echo ""
+            echo "آخرین خروجی:"
+            echo '```'
+            tail -n 80 "$LOG" 2>/dev/null || echo "فایل لاگ موجود نیست"
+            echo '```'
+          } > comment.md
+          gh issue comment 2 --body-file comment.md || echo "ثبت گزارش انجام نشد"
