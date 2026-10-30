@@ -1,0 +1,169 @@
+name: ساخت APK اندروید
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'شماره نسخه (بدون v)'
+        required: false
+        default: '1.0.0'
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: android-apk
+  cancel-in-progress: true
+
+env:
+  LOG: ci-build.log
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: شروع
+        run: echo "== start $(date -u)" | tee -a "$LOG"
+
+      - name: دریافت کد
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: نصب Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: نصب جاوا ۲۱
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: بررسی محیط
+        run: |
+          set -x
+          echo "== env $(date -u)" | tee -a "$LOG"
+          java -version 2>&1 | tee -a "$LOG"
+          node -v | tee -a "$LOG"
+          echo "ANDROID_HOME=$ANDROID_HOME" | tee -a "$LOG"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" | tee -a "$LOG"
+          ls -d "$ANDROID_HOME"/* 2>&1 | tee -a "$LOG" || true
+          ls "$ANDROID_HOME/platforms" 2>&1 | tee -a "$LOG" || true
+
+      - name: نصب وابستگی‌ها
+        run: |
+          echo "== npm ci $(date -u)" | tee -a "$LOG"
+          set -o pipefail
+          npm ci --no-audit --no-fund 2>&1 | tail -n 40 | tee -a "$LOG"
+
+      - name: اجرای تست‌ها
+        run: |
+          echo "== tests $(date -u)" | tee -a "$LOG"
+          set -o pipefail
+          npm test 2>&1 | tail -n 30 | tee -a "$LOG"
+
+      - name: ساخت نسخه وب
+        run: |
+          echo "== web build $(date -u)" | tee -a "$LOG"
+          set -o pipefail
+          npm run build 2>&1 | tail -n 20 | tee -a "$LOG"
+
+      - name: همگام‌سازی با پروژه اندروید
+        run: |
+          echo "== cap sync $(date -u)" | tee -a "$LOG"
+          set -o pipefail
+          npx cap sync android 2>&1 | tee -a "$LOG"
+
+      - name: ساخت APK
+        working-directory: android
+        run: |
+          echo "== gradle $(date -u)" | tee -a "../$LOG"
+          set -o pipefail
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --console=plain 2>&1 | tee -a "../$LOG" | tail -n 40
+
+      - name: آماده‌سازی فایل خروجی
+        id: apk
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then VERSION="${GITHUB_REF_NAME#v}"; else VERSION="${{ github.event.inputs.version || '1.0.0' }}"; fi
+          echo "نسخه: $VERSION" | tee -a "$LOG"
+          SRC=$(find android/app/build/outputs/apk/release -name "*.apk" | head -n1)
+          echo "فایل ساخته‌شده: ${SRC:-هیچ}" | tee -a "$LOG"
+          mkdir -p out
+          cp "$SRC" "out/salariapp-$VERSION.apk"
+          ls -lh out | tee -a "$LOG"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: بررسی صحت APK و امضا
+        id: verify
+        run: |
+          APK=$(ls out/*.apk | head -n1)
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* 2>/dev/null | sort -V | tail -n1)
+          echo "== بررسی APK $(date -u)" | tee -a "$LOG"
+          "$BT/aapt" dump badging "$APK" 2>&1 | grep -E "^package|^application-label:|^sdkVersion|^targetSdkVersion" | tee -a "$LOG" || true
+          "$BT/apksigner" verify --verbose --print-certs "$APK" 2>&1 | grep -E "Verified|Signer #1 certificate DN|Signer #1 certificate SHA-256|WARNING" | head -n 6 | tee -a "$LOG" || true
+          {
+            echo "### ✅ APK با موفقیت ساخته شد — اجرا \`${{ github.run_id }}\`"
+            echo ""
+            echo '```'
+            grep -E "Verified using|Signer #1 certificate DN|Signer #1 certificate SHA-256|^package|^sdkVersion|^targetSdkVersion|WARNING" "$LOG" | head -n 12
+            echo '```'
+            echo ""
+            echo "دانلود: https://github.com/${{ github.repository }}/releases/tag/v${{ steps.apk.outputs.version }}"
+          } > success.md
+          gh issue comment 2 --body-file success.md || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: بارگذاری به‌عنوان Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: salariapp-apk
+          path: out/*.apk
+          retention-days: 90
+
+      - name: انتشار در GitHub Releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.apk.outputs.version }}"
+          TAG="v$VERSION"
+          cat > release-notes.md <<'NOTES'
+          ### سالاری‌اپ — نصب روی اندروید
+
+          - فایل APK را دانلود و روی گوشی نصب کنید.
+          - برای نصب، اجازه «نصب برنامه از منابع ناشناس» را به مرورگر یا مدیر فایل بدهید.
+          - تمام داده‌ها روی خود گوشی ذخیره می‌شود و برنامه بدون اینترنت کار می‌کند.
+          - اعلان سررسید اقساط به‌صورت بومی (حتی با بسته بودن برنامه) نمایش داده می‌شود.
+          NOTES
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "سالاری‌اپ نسخه $VERSION" --notes-file release-notes.md
+          gh release upload "$TAG" "out/salariapp-$VERSION.apk" --clobber
+          echo "https://github.com/${{ github.repository }}/releases/tag/$TAG"
+
+      - name: ثبت گزارش در ایشو (در صورت خطا)
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          {
+            echo "### ساخت APK ناموفق بود — اجرا \`${{ github.run_id }}\`"
+            echo ""
+            echo "### خطاها:"
+            echo '```'
+            grep -iE "what went wrong|error:|FAILURE:|Unresolved|could not|not found" -A6 "$LOG" 2>/dev/null | head -n 60 || true
+            echo '```'
+            echo "### آخرین خروجی:"
+            echo '```'
+            tail -n 60 "$LOG" 2>/dev/null || echo "فایل لاگ موجود نیست"
+            echo '```'
+          } > comment.md
+          gh issue comment 2 --body-file comment.md || echo "ثبت گزارش انجام نشد"

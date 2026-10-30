@@ -8,10 +8,17 @@ import { scheduler } from '../lib/scheduler';
 import { smsParts } from '../lib/sms';
 import { toFa } from '../lib/format';
 import { formatDate, todayKey } from '../lib/jalali';
+import { ensureNativePermission, isNativeApp, pendingNativeCount, platformName, syncNativeReminders } from '../lib/native';
+import { useEffect } from 'react';
 
 export default function Settings() {
   const { cfg, update, unit, toggleTheme } = useApp();
   const toast = useToast();
+  const [nativeCount, setNativeCount] = useState<number | null>(null);
+  useEffect(() => {
+    pendingNativeCount().then(setNativeCount);
+  }, []);
+
   const [previewVars] = useState({
     name: 'علی محمدی', amount: '۴٬۵۰۰٬۰۰۰', unit, due: formatDate(todayKey()),
     idx: 3, count: 12, debt: '۱۸٬۰۰۰٬۰۰۰', late: 2, shop: cfg.shop.name, phone: cfg.shop.phone, date: formatDate(todayKey()),
@@ -144,8 +151,40 @@ export default function Settings() {
         </p>
       </Card>
 
+      {isNativeApp() ? (
+        <Card>
+          <SectionTitle icon="phone" title="اعلان‌های بومی اندروید" subtitle="زمان‌بندی سیستمی سررسید اقساط (حتی وقتی برنامه بسته است)" />
+          <div className="grid grid-cols-2 gap-2.5">
+            <div className="rounded-xl border border-line bg-surface2 p-2.5 min-w-0">
+              <p className="text-[10px] text-muted">پلتفرم</p>
+              <p className="text-[12px] font-semibold truncate">اندروید ({platformName()})</p>
+            </div>
+            <div className="rounded-xl border border-line bg-surface2 p-2.5 min-w-0">
+              <p className="text-[10px] text-muted">اعلان‌های زمان‌بندی‌شده</p>
+              <p className="text-[12px] font-semibold nums truncate">{nativeCount === null ? '—' : toFa(nativeCount)}</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2 mt-2">
+            <Button size="sm" icon="bell" onClick={async () => {
+              const p = await ensureNativePermission();
+              toast.push(p === 'granted' ? 'اجازه اعلان داده شد' : 'اجازه اعلان داده نشد', p === 'granted' ? 'ok' : 'warn');
+              setNativeCount(await pendingNativeCount());
+            }}>درخواست اجازه اعلان</Button>
+            <Button size="sm" variant="outline" icon="refresh" onClick={async () => {
+              const r = await syncNativeReminders(180);
+              setNativeCount(await pendingNativeCount());
+              toast.push(r.error ? r.error : `${toFa(r.scheduled)} اعلان زمان‌بندی شد`, r.error ? 'danger' : 'ok');
+            }}>همگام‌سازی اعلان‌ها</Button>
+          </div>
+          <p className="text-[11px] text-muted leading-6 mt-2">
+            با نصب اپ اندروید، اعلان سررسید هر قسط در همان روز و ساعتِ ارسالِ تعیین‌شده نمایش داده می‌شود،
+            حتی اگر برنامه باز نباشد. برای ارسال پیامک خودکار بدون باز کردن برنامه، به پنل پیامکی متصل شوید.
+          </p>
+        </Card>
+      ) : null}
+
       <Card>
-        <SectionTitle icon="cloud" title="اتصال گوگل‌درایو" subtitle="برای پشتیبان‌گیری ابری اختیاری" />
+        <SectionTitle icon="cloud" title="اتصال گوگل‌درایو" subtitle="برای پشتیبانی ابری اختیاری" />
         <Field label="شناسه کلاینت OAuth (Client ID)" hint="از Google Cloud Console → APIs → Credentials" className="mt-2">
           <Input value={cfg.backup.driveClientId} onChange={(e) => setBackup({ driveClientId: e.target.value })} dir="ltr" placeholder="123456-abc.apps.googleusercontent.com" />
         </Field>

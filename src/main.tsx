@@ -9,8 +9,9 @@ createRoot(document.getElementById('root')!).render(
   </React.StrictMode>,
 );
 
-// ثبت Service Worker فقط در نسخه ساخت
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
+// ثبت Service Worker فقط در نسخه وب (داخل اپ اندروید، اعلان‌ها بومی هستند)
+const insideNativeApp = !!(window as any).Capacitor?.isNativePlatform?.();
+if ('serviceWorker' in navigator && import.meta.env.PROD && !insideNativeApp) {
   window.addEventListener('load', async () => {
     try {
       const { registerSW } = await import('virtual:pwa-register');
