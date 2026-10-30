@@ -73,17 +73,16 @@ export default function NewSale() {
   function addLine(p?: Product) {
     if (!p) return;
     if (p.quantity <= 0) { toast.push(`«${p.name}» موجود نیست`, 'warn'); return; }
-    setLines((ls) => {
-      const found = ls.find((l) => l.productId === p.id);
-      if (found) {
-        if (found.qty >= found.stock) { toast.push('بیشتر از موجودی انبار نمی‌توانید بفروشید', 'warn'); return ls; }
-        return ls.map((l) => (l.key === found.key ? { ...l, qty: l.qty + 1 } : l));
-      }
-      return [...ls, {
-        key: String(p.id), productId: p.id, name: p.name, qty: 1,
-        price: p.sellPrice, cost: p.buyPrice, stock: p.quantity, unit: p.unit, image: p.image,
-      }];
-    });
+    const found = lines.find((l) => l.productId === p.id);
+    if (found) {
+      if (found.qty >= found.stock) { toast.push('بیشتر از موجودی انبار نمی‌توانید بفروشید', 'warn'); return; }
+      setLines((ls) => ls.map((l) => (l.key === found.key ? { ...l, qty: l.qty + 1 } : l)));
+      return;
+    }
+    setLines((ls) => [...ls, {
+      key: String(p.id), productId: p.id, name: p.name, qty: 1,
+      price: p.sellPrice, cost: p.buyPrice, stock: p.quantity, unit: p.unit, image: p.image,
+    }]);
   }
 
   const setLine = (key: string, patch: Partial<Line>) =>
