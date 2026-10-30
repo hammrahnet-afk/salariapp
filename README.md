@@ -24,15 +24,34 @@ npm test           # اجرای تست‌ها (۵۹ تست)
 
 > **چرا HTTPS؟** Service Worker، اعلان سیستمی و همگام‌سازی پس‌زمینه فقط روی HTTPS (یا localhost) فعال می‌شوند.
 
-### تبدیل به APK واقعی (اختیاری)
-اگر فایل `.apk` برای نصب مستقیم یا انتشار در بازار/مایکت لازم دارید، پوشهٔ `dist` را با Capacitor بسته‌بندی کنید:
+### نصب نسخه اندروید (APK)
+APK آماده در بخش **Releases** همین مخزن منتشر می‌شود:
+`https://github.com/hammrahnet-afk/salariapp/releases/latest`
+
+۱. فایل `salariapp-x.y.z.apk` را دانلود کنید.
+۲. اگر اندروید اجازه نداد، برای مرورگر یا مدیر فایل «نصب برنامه از منابع ناشناس» را روشن کنید.
+۳. نصب کنید و آیکون «سالاری‌اپ» را باز کنید.
+
+ساخت نسخه جدید به‌صورت خودکار با GitHub Actions (فایل `.github/workflows/android.yml`) انجام می‌شود:
+انتشار یک تگ `v1.0.4` → تست‌ها، ساخت وب، همگام‌سازی Capacitor، ساخت APK امضاشده و انتشار در Releases.
+
+### ساخت محلی APK (اختیاری)
+اگر Android Studio دارید:
 
 ```bash
-npm i -D @capacitor/cli @capacitor/core @capacitor/android
-npx cap init "سالاری‌اپ" ir.salari.app --web-dir=dist
-npm run build && npx cap add android && npx cap sync android
-npx cap open android      # در Android Studio → Build APK
+npm run build && npx cap sync android
+npx cap open android     # سپس Build > Generate Signed Bundle / APK
 ```
+
+کلید امضای پروژه در `android/app/salari-release.p12` نگه‌داری می‌شود
+(رمز و نام مستعار پیش‌فرض: `salari1404` / `salari`، قابل تغییر با متغیرهای محیطی
+`SALARI_STORE_PASSWORD`، `SALARI_KEY_PASSWORD`، `SALARI_KEY_ALIAS`).
+دلیل وجود آن این است که نسخه‌های بعدی روی نسخه نصب‌شده **به‌روزرسانی** شوند و داده‌های شما پاک نشود.
+
+### اعلان بومی سررسید در نسخه اندروید
+علاوه بر موتور داخلی، اپ اندروید سررسید اقساط را با `AlarmManager` سیستم‌عامل زمان‌بندی می‌کند؛
+یعنی اعلان «سررسید قسط امروز» حتی وقتی برنامه بسته است هم نمایش داده می‌شود.
+پس از نصب، یک‌بار در «تنظیمات → اعلان‌های بومی اندروید» اجازه اعلان را بدهید و «همگام‌سازی اعلان‌ها» را بزنید.
 
 ---
 

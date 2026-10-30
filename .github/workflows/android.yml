@@ -103,6 +103,27 @@ jobs:
           ls -lh out | tee -a "$LOG"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: بررسی صحت APK و امضا
+        id: verify
+        run: |
+          APK=$(ls out/*.apk | head -n1)
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* 2>/dev/null | sort -V | tail -n1)
+          echo "== بررسی APK $(date -u)" | tee -a "$LOG"
+          "$BT/aapt" dump badging "$APK" 2>&1 | grep -E "^package|application-label|sdkVersion|targetSdkVersion" | tee -a "$LOG" || true
+          "$BT/apksigner" verify --print-certs "$APK" 2>&1 | head -n 6 | tee -a "$LOG" || true
+          {
+            echo "### ✅ APK با موفقیت ساخته شد — اجرا \`${{ github.run_id }}\`"
+            echo ""
+            echo '```'
+            grep -E "^package|application-label|sdkVersion|targetSdkVersion|Signer #1 certificate DN|SHA-256" "$LOG" | head -n 12
+            echo '```'
+            echo ""
+            echo "دانلود: https://github.com/${{ github.repository }}/releases/tag/v${{ steps.apk.outputs.version }}"
+          } > success.md
+          gh issue comment 2 --body-file success.md || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: بارگذاری به‌عنوان Artifact
         uses: actions/upload-artifact@v4
         with:
