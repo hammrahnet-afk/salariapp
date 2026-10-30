@@ -3,6 +3,7 @@ import { HashRouter, Route, Routes } from 'react-router-dom';
 import Layout from './components/Layout';
 import { AppProvider } from './state';
 import { Spinner, ToastProvider } from './components/ui';
+import { FirstRunPermissions } from './components/Permissions';
 import { db } from './lib/db';
 import { seedIfEmpty } from './lib/seed';
 import { bindSystemEvents, scheduler } from './lib/scheduler';
@@ -59,6 +60,7 @@ function Boot() {
 
   return (
     <Suspense fallback={<div className="grid place-items-center py-24"><Spinner className="w-6 h-6 text-brand" /></div>}>
+      <FirstRunPermissions />
       <Routes>
         <Route element={<Layout />}>
           <Route index element={<Dashboard />} />

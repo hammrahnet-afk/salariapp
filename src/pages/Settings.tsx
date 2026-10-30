@@ -9,6 +9,7 @@ import { smsParts } from '../lib/sms';
 import { toFa } from '../lib/format';
 import { formatDate, todayKey } from '../lib/jalali';
 import { ensureNativePermission, isNativeApp, pendingNativeCount, platformName, syncNativeReminders } from '../lib/native';
+import { NativePermissionCard } from '../components/Permissions';
 import { useEffect } from 'react';
 
 export default function Settings() {
@@ -151,6 +152,8 @@ export default function Settings() {
         </p>
       </Card>
 
+      {isNativeApp() ? <NativePermissionCard /> : null}
+
       {isNativeApp() ? (
         <Card>
           <SectionTitle icon="phone" title="اعلان‌های بومی اندروید" subtitle="زمان‌بندی سیستمی سررسید اقساط (حتی وقتی برنامه بسته است)" />
@@ -196,7 +199,7 @@ export default function Settings() {
       <Card>
         <SectionTitle icon="spark" title="درباره سالاری‌اپ" />
         <p className="text-[12px] text-muted leading-7">
-          نسخه {toFa(1)}٫{toFa(0)} • طراحی‌شده برای فروشگاه‌های لوازم خانگی و آشپزخانه.
+          نسخه {toFa(1)}٫{toFa(0)}٫{toFa(1)} • طراحی‌شده برای فروشگاه‌های لوازم خانگی و آشپزخانه.
           <br />تمام داده‌ها به‌صورت آفلاین روی دستگاه شما ذخیره می‌شود و هیچ اطلاعاتی به سرور دیگری ارسال نمی‌شود.
         </p>
         <div className="flex flex-wrap gap-2 mt-2">

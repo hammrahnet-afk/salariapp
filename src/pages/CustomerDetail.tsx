@@ -6,7 +6,7 @@ import { addPayment, createPlan, deletePlan } from '../lib/plans';
 import { balanceOf } from '../lib/inventory';
 import { dueLabel, formatDate, relativeDay, todayKey } from '../lib/jalali';
 import { money, moneyInWords, toFa } from '../lib/format';
-import { Badge, Button, Card, Confirm, EmptyState, Field, Icon, IconButton, Input, ListRow, Modal, MoneyInput, Progress, SectionTitle, Segmented, Select, Textarea, cx, useToast } from '../components/ui';
+import { Badge, Button, Card, Confirm, EmptyState, Field, Icon, IconButton, Input, ListRow, Modal, MoneyInput, Progress, SectionTitle, Segmented, Select, Stepper, Textarea, cx, useToast } from '../components/ui';
 import { useApp } from '../state';
 import { copyToClipboard, logSms, renderTemplate, smsParts, smsUri } from '../lib/sms';
 import { UNIT_LABEL } from '../lib/settings';
@@ -382,16 +382,12 @@ export function PlanModal({ customerId, customerName, debt, onClose, saleId, sal
         <Field label="مبلغ کل"><MoneyInput value={total} onChange={setTotal} /></Field>
         <Field label="پیش‌پرداخت"><MoneyInput value={down} onChange={setDown} /></Field>
         <Field label="تعداد اقساط">
-          <div className="flex items-center gap-2">
-            <IconButton name="close" label="کم" variant="outline" onClick={() => setCount(Math.max(1, count - 1))} className="rotate-45" />
-            <Input value={toFa(count)} onChange={(e) => setCount(Math.max(1, Number(e.target.value.replace(/[^\d۰-۹]/g, '')) || 1))} className="text-center nums" />
-            <IconButton name="plus" label="زیاد" variant="outline" onClick={() => setCount(Math.min(240, count + 1))} />
-          </div>
+          <Stepper value={count} min={1} max={240} onChange={setCount} suffix="قسط" />
         </Field>
         <Field label="فاصله سررسید">
-          <div className="flex gap-2">
-            <Input value={toFa(interval)} onChange={(e) => setInterval(Math.max(1, Number(e.target.value.replace(/[^\d۰-۹]/g, '')) || 1))} className="w-16 text-center nums" />
-            <Select value={mode} onChange={(e) => setMode(e.target.value as 'days' | 'months')}>
+          <div className="grid grid-cols-[1fr_auto] gap-2">
+            <Stepper value={interval} min={1} max={365} onChange={setInterval} />
+            <Select value={mode} onChange={(e) => setMode(e.target.value as 'days' | 'months')} className="w-20">
               <option value="months">ماه</option>
               <option value="days">روز</option>
             </Select>

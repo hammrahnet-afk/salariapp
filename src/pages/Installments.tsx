@@ -182,7 +182,7 @@ export default function Installments() {
         </div>
         {expanded ? (
           <div className="mt-2.5 pt-2.5 border-t border-line flex flex-wrap items-end gap-2">
-            <Field label="مبلغ دریافتی"><MoneyInput value={amount} onChange={setAmount} className="h-9 w-32" /></Field>
+            <Field label="مبلغ دریافتی"><MoneyInput value={amount} onChange={setAmount} size="sm" unit={unit} className="w-36" /></Field>
             <Button size="sm" icon="check" onClick={settle}>ثبت تسویه</Button>
             <Button size="sm" variant="soft" icon="message" onClick={sendSms}>یادآوری پیامکی</Button>
             <Button size="sm" variant="ghost" icon="users" onClick={() => nav(`/customers/${ins.customerId}`)}>پرونده مشتری</Button>

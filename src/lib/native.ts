@@ -6,6 +6,7 @@
  */
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
+import { AndroidSettings, NativeSettings } from 'capacitor-native-settings';
 import { db } from './db';
 import { addDays, formatDate, keyToDate, todayKey } from './jalali';
 import { money, toFa } from './format';
@@ -17,8 +18,9 @@ export const platformName = (): string => Capacitor.getPlatform();
 const CHANNEL_ID = 'salari-due';
 
 export type PermissionState = 'granted' | 'denied' | 'prompt' | 'unsupported';
+export type ExactAlarmState = 'granted' | 'denied' | 'unsupported';
 
-/** درخواست اجازه اعلان از اندروید ۱۳ به بالا */
+/** درخواست اجازه اعلان از اندروید ۱۳ به بالا (پنجره سیستمی اندروید نمایش داده می‌شود) */
 export async function ensureNativePermission(): Promise<PermissionState> {
   if (!isNativeApp()) return 'unsupported';
   try {
@@ -31,8 +33,89 @@ export async function ensureNativePermission(): Promise<PermissionState> {
   }
 }
 
+/** فقط خواندن وضعیت اجازه اعلان، بدون نمایش پنجره سیستمی */
+export async function notificationPermissionStatus(): Promise<PermissionState> {
+  if (!isNativeApp()) return 'unsupported';
+  try {
+    const cur = await LocalNotifications.checkPermissions();
+    return cur.display === 'granted' ? 'granted' : cur.display === 'denied' ? 'denied' : 'prompt';
+  } catch {
+    return 'unsupported';
+  }
+}
+
+/** وضعیت اجازه «آلارم و یادآور دقیق» اندروید ۱۲ به بالا */
+export async function exactAlarmStatus(): Promise<ExactAlarmState> {
+  if (!isNativeApp()) return 'unsupported';
+  try {
+    const res: any = await LocalNotifications.checkExactNotificationSetting();
+    const v = String(res?.exact_alarm ?? res ?? '');
+    return v === 'granted' ? 'granted' : v === 'denied' ? 'denied' : 'granted';
+  } catch {
+    return 'unsupported';
+  }
+}
+
+/** باز کردن صفحه سیستمی «آلارم و یادآور» تا کاربر اجازه دقیق را روشن کند */
+export async function requestExactAlarm(): Promise<ExactAlarmState> {
+  if (!isNativeApp()) return 'unsupported';
+  try {
+    await LocalNotifications.changeExactNotificationSetting();
+  } catch { /* برخی نسخه‌های اندروید این صفحه را ندارند */ }
+  return exactAlarmStatus();
+}
+
+/** باز کردن صفحه معافیت از بهینه‌سازی باتری (برای ادامه کار در پس‌زمینه) */
+export async function openBatteryOptimizationSettings(): Promise<boolean> {
+  if (!isNativeApp()) return false;
+  try {
+    const res = await NativeSettings.openAndroid({ option: AndroidSettings.BatteryOptimization });
+    return !!res?.status;
+  } catch {
+    return false;
+  }
+}
+
+/** باز کردن صفحه اختصاصی تنظیمات همین اپ */
+export async function openAppSettings(): Promise<boolean> {
+  if (!isNativeApp()) return false;
+  try {
+    const res = await NativeSettings.openAndroid({ option: AndroidSettings.ApplicationDetails });
+    return !!res?.status;
+  } catch {
+    return false;
+  }
+}
+
+export interface NativeAccessReport {
+  notifications: PermissionState;
+  exactAlarm: ExactAlarmState;
+}
+
+/** خواندن وضعیت همه مجوزهای لازم بدون باز کردن پنجره‌ای */
+export async function nativeAccessReport(): Promise<NativeAccessReport> {
+  const [notifications, exactAlarm] = await Promise.all([notificationPermissionStatus(), exactAlarmStatus()]);
+  return { notifications, exactAlarm };
+}
+
+/**
+ * راه‌اندازی مجوزهای بومی در اولین اجرا:
+ * ۱) درخواست اجازه اعلان (پنجره سیستمی اندروید ۱۳+)
+ * ۲) ساخت کانال اعلان با اهمیت بالا تا در تنظیمات سیستم دیده شود
+ * ۳) خواندن وضعیت آلارم دقیق (برای درخواست، دکمه در کارت مجوزها هست)
+ * ۴) زمان‌بندی مجدد یادآورها
+ */
+export async function bootstrapNativePermissions(): Promise<NativeAccessReport> {
+  if (!isNativeApp()) return { notifications: 'unsupported', exactAlarm: 'unsupported' };
+  await ensureChannel();
+  const notifications = await ensureNativePermission();
+  const exactAlarm = await exactAlarmStatus();
+  try { await syncNativeReminders(180); } catch { /* بی‌اثر */ }
+  return { notifications, exactAlarm };
+}
+
 /** کانال اعلان با اهمیت بالا (صدا + ویبره + نمایش روی صفحه) */
-async function ensureChannel(): Promise<void> {
+export async function ensureChannel(): Promise<void> {
   try {
     await LocalNotifications.createChannel({
       id: CHANNEL_ID,
