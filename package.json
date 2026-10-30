@@ -1,7 +1,7 @@
 {
   "name": "salariapp",
   "private": true,
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "سامانه حسابداری، انبار و اقساط لوازم خانگی و آشپزخانه (آفلاین، نصب‌شدنی روی اندروید)",
   "type": "module",
   "scripts": {

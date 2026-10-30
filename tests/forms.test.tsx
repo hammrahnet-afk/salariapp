@@ -6,7 +6,8 @@ import React from 'react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 
-import { MoneyInput, Stepper, CONTROL_HEIGHT } from '../src/components/ui';
+import { Combobox, MoneyInput, Stepper, CONTROL_HEIGHT } from '../src/components/ui';
+import { notificationAccess } from '../src/lib/permissions';
 
 beforeAll(() => {
   if (!window.matchMedia) {
@@ -59,8 +60,12 @@ describe('فرم ثبت فروش', () => {
     await seedIfEmpty();
     window.location.hash = '#/sales/new';
     render(<App />);
-    const products = await screen.findAllByText('یخچال ساید بای ساید اسنوا', {}, { timeout: 8000 });
-    fireEvent.click(products[0].closest('button')!);
+    // انتخاب کالا از لیست کشویی جستجوپذیر (نه فهرست کالاهای پایین صفحه)
+    const picker = await screen.findByRole('combobox', { name: /انتخاب کالا/ }, { timeout: 8000 });
+    fireEvent.focus(picker);
+    fireEvent.change(picker, { target: { value: 'یخچال ساید' } });
+    const option = await screen.findByRole('option', { name: /یخچال ساید بای ساید اسنوا/ }, { timeout: 5000 });
+    fireEvent.click(option);
     await screen.findByLabelText('کاهش', {}, { timeout: 5000 });
     expect(screen.getByLabelText('افزایش')).toBeTruthy();
     expect(document.querySelector('.rotate-45')).toBeNull();
@@ -68,4 +73,81 @@ describe('فرم ثبت فروش', () => {
     const qty = screen.getByLabelText('کاهش').parentElement!;
     expect(qty.className).toContain('h-11');
   }, 20000);
+});
+
+describe('لیست کشویی جستجوپذیر کالا', () => {
+  it('با تایپ، فهرست فیلتر می‌شود و انتخاب مقدار درست را برمی‌گرداند', () => {
+    const picked: string[] = [];
+    render(
+      <Combobox
+        label="انتخاب کالا"
+        options={[
+          { value: '1', label: 'یخچال ساید بای ساید اسنوا', hint: 'اسنوا • P-1001' },
+          { value: '2', label: 'ماشین لباسشویی ۹ کیلو اسنوا', hint: 'اسنوا • P-2001' },
+          { value: '3', label: 'ماهیتابه گرانیتی ۲۸ سانتی', hint: 'زینوم • P-4002' },
+        ]}
+        onSelect={(v) => picked.push(v)}
+      />,
+    );
+    const input = screen.getByRole('combobox', { name: 'انتخاب کالا' });
+    fireEvent.focus(input);
+    expect(screen.getAllByRole('option')).toHaveLength(3);
+
+    fireEvent.change(input, { target: { value: 'لباسشویی' } });
+    const options = screen.getAllByRole('option');
+    expect(options).toHaveLength(1);
+    expect(options[0].textContent).toContain('ماشین لباسشویی');
+
+    fireEvent.click(options[0]);
+    expect(picked).toEqual(['2']);
+    // پس از انتخاب، جستجو پاک و لیست بسته می‌شود
+    expect((input as HTMLInputElement).value).toBe('');
+    expect(screen.queryByRole('option')).toBeNull();
+
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: 'کالای ناموجود' } });
+    expect(screen.queryByRole('option')).toBeNull();
+    expect(screen.getByText('موردی یافت نشد')).toBeTruthy();
+  });
+});
+
+describe('چینش کالاها', () => {
+  it('نمای «بدون عکس» نام کامل کالا را نمایش می‌دهد و انتخاب کاربر ذخیره می‌شود', async () => {
+    const { seedIfEmpty } = await import('../src/lib/seed');
+    const { db } = await import('../src/lib/db');
+    const App = (await import('../src/App')).default;
+    await db.open();
+    await seedIfEmpty();
+    window.location.hash = '#/products';
+    render(<App />);
+    await screen.findByText(/مدیریت کالاها/, {}, { timeout: 8000 });
+
+    fireEvent.click(screen.getByRole('button', { name: /بدون عکس/ }));
+    const name = await screen.findByText('یخچال ساید بای ساید اسنوا');
+    // در این نما نام کامل و چندخطی است (بریده نمی‌شود)
+    expect(name.className).toContain('break-words');
+    expect(localStorage.getItem('salari.products.view')).toBe('compact');
+  }, 20000);
+});
+
+describe('وضعیت اجازه اعلان', () => {
+  it('در مرورگر بدون API اعلان، وضعیت unsupported برمی‌گردد (نه denied)', async () => {
+    vi.stubGlobal('Notification', undefined);
+    await expect(notificationAccess()).resolves.toBe('unsupported');
+    vi.unstubAllGlobals();
+  });
+
+  it('وقتی کاربر اجازه داده باشد، وضعیت granted است و بنر داشبورد پنهان می‌شود', async () => {
+    vi.stubGlobal('Notification', { permission: 'granted', requestPermission: async () => 'granted' });
+    await expect(notificationAccess()).resolves.toBe('granted');
+    vi.unstubAllGlobals();
+  });
+
+  it('تا وقتی کاربر تصمیم نگرفته وضعیت prompt و پس از رد کردن denied است', async () => {
+    vi.stubGlobal('Notification', { permission: 'default', requestPermission: async () => 'denied' });
+    await expect(notificationAccess()).resolves.toBe('prompt');
+    vi.stubGlobal('Notification', { permission: 'denied', requestPermission: async () => 'denied' });
+    await expect(notificationAccess()).resolves.toBe('denied');
+    vi.unstubAllGlobals();
+  });
 });

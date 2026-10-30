@@ -37,10 +37,10 @@ describe('جریان افزودن کالا', () => {
     await screen.findByText(/مدیریت کالاها/, undefined, READY);
 
     fireEvent.click(screen.getByRole('button', { name: /کالای جدید/ }));
+    // فرم ثبت کالا اکنون به‌صورت بخش ورودی داخل همان صفحه باز می‌شود (نه مودال)
     const nameInput = await screen.findByPlaceholderText('مثلاً یخچال ساید بای ساید اسنوا', undefined, READY);
     fireEvent.change(nameInput, { target: { value: 'توستر تست دوکاره' } });
-    const dialog = screen.getByRole('dialog');
-    fireEvent.click(within(dialog).getByRole('button', { name: /افزودن کالا/ }));
+    fireEvent.click(screen.getByRole('button', { name: /ثبت کالا/ }));
 
     await waitFor(async () => expect(await db.products.count()).toBe(before + 1), { timeout: 8000 });
     const created = (await db.products.toArray()).find((p) => p.name === 'توستر تست دوکاره');
@@ -59,8 +59,12 @@ describe('جریان ثبت فروش', () => {
     await open('/sales/new');
     await screen.findByText(/اقلام فاکتور/, undefined, READY);
 
-    const tile = await screen.findByRole('button', { name: new RegExp(product.name.slice(0, 12)) }, READY);
-    fireEvent.click(tile);
+    // کالا از لیست کشویی جستجوپذیر انتخاب می‌شود
+    const picker = await screen.findByRole('combobox', { name: /انتخاب کالا/ }, READY);
+    fireEvent.focus(picker);
+    fireEvent.change(picker, { target: { value: product.name.slice(0, 12) } });
+    const option = await screen.findByRole('option', { name: new RegExp(product.name.slice(0, 12)) }, READY);
+    fireEvent.click(option);
     await waitFor(() => expect(screen.getAllByText(/جمع‌بندی فاکتور/).length).toBeGreaterThan(0), READY);
 
     fireEvent.click(screen.getByRole('button', { name: /ثبت فاکتور/ }));

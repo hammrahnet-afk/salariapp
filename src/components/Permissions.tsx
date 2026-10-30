@@ -6,6 +6,7 @@ import {
 } from '../lib/native';
 import { Badge, Button, Card, Icon, Modal, SectionTitle, cx, useToast } from './ui';
 import { toFa } from '../lib/format';
+import { emitAccessChange } from '../lib/permissions';
 
 const ASKED_KEY = 'salari.permissions.asked.v1';
 
@@ -76,6 +77,7 @@ export function NativePermissionCard({ onDone }: { onDone?: () => void }) {
     const p = await ensureNativePermission();
     setNotif(p);
     setBusy(null);
+    emitAccessChange();
     if (p === 'granted') {
       await syncNativeReminders(180);
       toast.push('اجازه اعلان فعال شد', 'ok');
@@ -90,6 +92,7 @@ export function NativePermissionCard({ onDone }: { onDone?: () => void }) {
     const e = await requestExactAlarm();
     setExact(e);
     setBusy(null);
+    emitAccessChange();
     toast.push(e === 'granted' ? 'یادآور دقیق فعال است' : 'پس از روشن کردن، دوباره بررسی کنید', e === 'granted' ? 'ok' : 'warn');
     onDone?.();
   }
