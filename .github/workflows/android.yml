@@ -109,13 +109,13 @@ jobs:
           APK=$(ls out/*.apk | head -n1)
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* 2>/dev/null | sort -V | tail -n1)
           echo "== بررسی APK $(date -u)" | tee -a "$LOG"
-          "$BT/aapt" dump badging "$APK" 2>&1 | grep -E "^package|application-label|sdkVersion|targetSdkVersion" | tee -a "$LOG" || true
-          "$BT/apksigner" verify --print-certs "$APK" 2>&1 | head -n 6 | tee -a "$LOG" || true
+          "$BT/aapt" dump badging "$APK" 2>&1 | grep -E "^package|^application-label:|^sdkVersion|^targetSdkVersion" | tee -a "$LOG" || true
+          "$BT/apksigner" verify --verbose --print-certs "$APK" 2>&1 | grep -E "Verified|Signer #1 certificate DN|Signer #1 certificate SHA-256|WARNING" | head -n 6 | tee -a "$LOG" || true
           {
             echo "### ✅ APK با موفقیت ساخته شد — اجرا \`${{ github.run_id }}\`"
             echo ""
             echo '```'
-            grep -E "^package|application-label|sdkVersion|targetSdkVersion|Signer #1 certificate DN|SHA-256" "$LOG" | head -n 12
+            grep -E "Verified using|Signer #1 certificate DN|Signer #1 certificate SHA-256|^package|^sdkVersion|^targetSdkVersion|WARNING" "$LOG" | head -n 12
             echo '```'
             echo ""
             echo "دانلود: https://github.com/${{ github.repository }}/releases/tag/v${{ steps.apk.outputs.version }}"
