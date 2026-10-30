@@ -7,19 +7,19 @@ import { createPlan } from '../lib/plans';
 import { formatDate, todayKey } from '../lib/jalali';
 import { money, moneyInWords, toFa } from '../lib/format';
 import {
-  AmountRow, Badge, Button, Card, EmptyState, Field, Icon, IconButton, Input, MoneyInput,
-  Modal, ProductThumb, SearchInput, SectionTitle, Select, Stepper, cx, useToast,
+  AmountRow, Badge, Button, Card, Combobox, EmptyState, Field, Icon, IconButton, Input, MoneyInput,
+  Modal, ProductThumb, SectionTitle, Select, Stepper, cx, useToast,
 } from '../components/ui';
 import { useApp } from '../state';
 
 interface Line { key: string; productId?: number; name: string; qty: number; price: number; cost: number; stock: number; unit: string; image?: string }
 
-const METHODS: { value: PayMethod; label: string }[] = [
-  { value: 'cash', label: 'نقدی' },
-  { value: 'card', label: 'کارتخوان' },
-  { value: 'transfer', label: 'کارت‌به‌کارت' },
-  { value: 'cheque', label: 'چک' },
-  { value: 'credit', label: 'نسیه' },
+const METHODS: { value: PayMethod; label: string; icon: string }[] = [
+  { value: 'cash', label: 'نقدی', icon: 'cash' },
+  { value: 'card', label: 'کارتخوان', icon: 'card' },
+  { value: 'transfer', label: 'کارت‌به‌کارت', icon: 'wallet' },
+  { value: 'cheque', label: 'چک', icon: 'edit' },
+  { value: 'credit', label: 'نسیه', icon: 'clock' },
 ];
 
 export default function NewSale() {
@@ -37,7 +37,6 @@ export default function NewSale() {
   const [method, setMethod] = useState<PayMethod>('cash');
   const [date, setDate] = useState(todayKey());
   const [note, setNote] = useState('');
-  const [q, setQ] = useState('');
   const [cat, setCat] = useState('');
   const [saving, setSaving] = useState(false);
   const [planOpen, setPlanOpen] = useState<{ saleId: number; debt: number } | null>(null);
@@ -47,20 +46,39 @@ export default function NewSale() {
   const customers = useLiveQuery(() => db.customers.where('archived').equals(0).toArray(), []) ?? [];
   const customer = useLiveQuery(() => (customerId ? db.customers.get(customerId) : undefined), [customerId]);
 
-  const shown = useMemo(() => {
-    const term = q.trim().toLowerCase();
-    return products
-      .filter((p) => (!cat || p.categoryId === Number(cat)) && (!term || [p.name, p.brand, p.model, p.code].join(' ').toLowerCase().includes(term)))
-      .slice(0, 40);
-  }, [products, q, cat]);
+  /** گزینه‌های لیست کشویی کالا (جستجوپذیر) */
+  const productOptions = useMemo(
+    () => products
+      .filter((p) => !cat || p.categoryId === Number(cat))
+      .sort((a, b) => a.name.localeCompare(b.name, 'fa'))
+      .map((p) => ({
+        value: String(p.id),
+        label: p.name,
+        hint: [p.brand, p.model ? `مدل ${p.model}` : '', p.code].filter(Boolean).join(' • '),
+        keywords: `${p.code} ${p.brand || ''} ${p.model || ''}`,
+        disabled: p.quantity <= 0,
+        trailing: (
+          <span className="flex flex-col items-end gap-1">
+            <span className="text-[11px] font-bold nums whitespace-nowrap">{money(p.sellPrice)}</span>
+            <Badge tone={p.quantity <= 0 ? 'danger' : p.quantity <= p.minStock ? 'warn' : 'ok'}>{p.quantity <= 0 ? 'ناموجود' : `${toFa(p.quantity)} ${p.unit}`}</Badge>
+          </span>
+        ),
+      })),
+    [products, cat],
+  );
 
   const totals = useMemo(() => computeTotals(lines, discount, paid, cfg.taxPercent), [lines, discount, paid, cfg.taxPercent]);
   const qty = lines.reduce((a, l) => a + l.qty, 0);
 
-  function addProduct(p: Product) {
+  function addLine(p?: Product) {
+    if (!p) return;
+    if (p.quantity <= 0) { toast.push(`«${p.name}» موجود نیست`, 'warn'); return; }
     setLines((ls) => {
       const found = ls.find((l) => l.productId === p.id);
-      if (found) return ls.map((l) => (l.key === found.key ? { ...l, qty: Math.min(l.stock, l.qty + 1) } : l));
+      if (found) {
+        if (found.qty >= found.stock) { toast.push('بیشتر از موجودی انبار نمی‌توانید بفروشید', 'warn'); return ls; }
+        return ls.map((l) => (l.key === found.key ? { ...l, qty: l.qty + 1 } : l));
+      }
       return [...ls, {
         key: String(p.id), productId: p.id, name: p.name, qty: 1,
         price: p.sellPrice, cost: p.buyPrice, stock: p.quantity, unit: p.unit, image: p.image,
@@ -104,13 +122,13 @@ export default function NewSale() {
   }
 
   return (
-    <div className="grid lg:grid-cols-[1fr_380px] gap-4 max-w-6xl mx-auto items-start">
+    <div className="grid lg:grid-cols-[1fr_360px] gap-4 max-w-6xl mx-auto items-start">
       <div className="space-y-4 min-w-0">
-        {/* ---------------------------- مشتری ---------------------------- */}
+        {/* ---------------------------- ۱) مشتری ---------------------------- */}
         <Card>
           <SectionTitle
             icon="users"
-            title="مشتری فاکتور"
+            title="۱) مشتری فاکتور"
             subtitle={customerId ? 'فروش اعتباری به مشتری ثبت‌شده' : 'فروش نقدی روزانه به مشتری گذرا'}
           />
           <div className="grid sm:grid-cols-2 gap-3 items-end">
@@ -136,16 +154,47 @@ export default function NewSale() {
           </div>
         </Card>
 
-        {/* ---------------------------- اقلام ---------------------------- */}
-        <Card>
+        {/* -------------------------- ۲) افزودن کالا -------------------------- */}
+        <Card className="border-brand/30">
           <SectionTitle
-            icon="list"
-            title="اقلام فاکتور"
-            subtitle={lines.length ? `${toFa(lines.length)} قلم • ${toFa(qty)} عدد` : 'کالایی اضافه نشده'}
-            action={<Button size="sm" variant="outline" icon="plus" onClick={() => document.getElementById('product-picker')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>افزودن کالا</Button>}
+            icon="search"
+            title="۲) افزودن کالا"
+            subtitle="نام یا کد کالا را بنویسید و از لیست کشویی انتخاب کنید"
+            action={(
+              <Select value={cat} onChange={(e) => setCat(e.target.value)} size="sm" className="w-auto min-w-[110px]">
+                <option value="">همه دسته‌ها</option>
+                {categories.map((c) => <option key={c.id} value={String(c.id)}>{c.icon} {c.name}</option>)}
+              </Select>
+            )}
           />
+          <Combobox
+            options={productOptions}
+            label="انتخاب کالا"
+            placeholder={products.length ? 'جستجوی نام، برند، مدل یا کد کالا…' : 'هنوز کالایی ثبت نشده است'}
+            emptyText={products.length ? 'کالایی با این مشخصات پیدا نشد' : 'ابتدا از بخش کالاها، کالای خود را ثبت کنید'}
+            hint={`${toFa(productOptions.filter((o) => !o.disabled).length)} کالای موجود • با جستجو فیلتر می‌شود`}
+            disabled={!products.length}
+            onSelect={(v) => addLine(products.find((p) => String(p.id) === v))}
+          />
+          <div className="flex items-center gap-2 mt-2.5 min-w-0">
+            <Icon name="box" className="w-3.5 h-3.5 text-muted shrink-0" />
+            <p className="text-[11px] text-muted truncate flex-1 min-w-0">
+              {lines.length ? `${toFa(lines.length)} قلم در فاکتور • ${toFa(qty)} عدد` : 'با هر انتخاب، یک ردیف به فاکتور اضافه می‌شود'}
+            </p>
+            {!products.length ? (
+              <Button size="sm" variant="outline" icon="plus" className="mr-auto" onClick={() => nav('/products?new=1')}>ثبت کالا</Button>
+            ) : null}
+            {lines.length ? (
+              <Button size="sm" variant="ghost" icon="refresh" className="mr-auto" onClick={() => { setLines([]); setDiscount(0); setPaid(0); }}>پاک کردن فاکتور</Button>
+            ) : null}
+          </div>
+        </Card>
+
+        {/* ---------------------------- ۳) اقلام ---------------------------- */}
+        <Card>
+          <SectionTitle icon="list" title="۳) اقلام فاکتور" subtitle={lines.length ? `${toFa(lines.length)} قلم • ${toFa(qty)} عدد` : 'کالایی اضافه نشده'} />
           {!lines.length ? (
-            <EmptyState icon="card" title="هنوز کالایی اضافه نشده" hint="از فهرست پایین یک کالا انتخاب کنید تا به فاکتور اضافه شود." />
+            <EmptyState icon="card" title="فاکتور خالی است" hint="از کادر بالا کالا را جستجو و انتخاب کنید تا اینجا فهرست شود." />
           ) : (
             <div className="space-y-2.5">
               {lines.map((l) => (
@@ -153,7 +202,7 @@ export default function NewSale() {
                   <div className="flex items-center gap-2.5 min-w-0">
                     <ProductThumb name={l.name} size="sm" src={l.image} />
                     <div className="min-w-0 flex-1">
-                      <p className="text-[13px] font-semibold truncate">{l.name}</p>
+                      <p className="text-[13px] font-semibold break-words leading-6">{l.name}</p>
                       <p className="text-[11px] text-muted truncate">موجودی انبار: {toFa(l.stock)} {l.unit}</p>
                     </div>
                     <IconButton name="trash" label="حذف قلم" variant="danger" size="sm" onClick={() => setLines((ls) => ls.filter((x) => x.key !== l.key))} />
@@ -180,51 +229,6 @@ export default function NewSale() {
                   </div>
                   {l.qty > l.stock ? <p className="text-[11px] text-danger mt-1.5">مقدار وارد‌شده بیش از موجودی انبار است.</p> : null}
                 </div>
-              ))}
-            </div>
-          )}
-        </Card>
-
-        {/* -------------------------- انتخاب کالا -------------------------- */}
-        <Card>
-          <div id="product-picker" />
-          <SectionTitle icon="search" title="انتخاب کالا از انبار" subtitle="برای افزودن، روی کالا بزنید" />
-          <div className="grid grid-cols-[1fr_auto] gap-2 items-center">
-            <SearchInput value={q} onChange={setQ} placeholder="جستجوی نام، برند یا کد کالا…" />
-            <Select value={cat} onChange={(e) => setCat(e.target.value)} className="w-auto min-w-[120px]">
-              <option value="">همه دسته‌ها</option>
-              {categories.map((c) => <option key={c.id} value={String(c.id)}>{c.icon} {c.name}</option>)}
-            </Select>
-          </div>
-          {!shown.length ? (
-            <EmptyState icon="box" title={products.length ? 'کالایی با این مشخصات یافت نشد' : 'هنوز کالایی ثبت نشده'} />
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-3">
-              {shown.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  disabled={p.quantity <= 0}
-                  onClick={() => addProduct(p)}
-                  className={cx(
-                    'text-right rounded-xl border p-2.5 transition min-w-0 h-full text-right',
-                    p.quantity <= 0 ? 'border-line opacity-50 cursor-not-allowed' : 'border-line bg-surface hover:border-brand active:scale-[.98]',
-                  )}
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <ProductThumb src={p.image} name={p.name} size="sm" />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[12px] font-medium truncate">{p.name}</p>
-                      <p className="text-[11px] nums text-brand truncate">{money(p.sellPrice)}</p>
-                    </div>
-                  </div>
-                  <div className="mt-2 flex items-center justify-between gap-1 min-w-0">
-                    <Badge tone={p.quantity <= 0 ? 'danger' : p.quantity <= p.minStock ? 'warn' : 'ok'}>
-                      {toFa(p.quantity)} {p.unit}
-                    </Badge>
-                    <span className="text-[10px] text-muted truncate">{p.brand || p.code}</span>
-                  </div>
-                </button>
               ))}
             </div>
           )}

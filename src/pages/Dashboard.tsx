@@ -9,16 +9,31 @@ import { addDays, formatDate, lastMonths, monthRange, relativeDay, todayKey } fr
 import { money, moneyShort, percent, toFa } from '../lib/format';
 import { customerDebtReport, dailyReport, installmentReport, salesByDay, salesByMonth, stockReport, topProducts } from '../lib/reports';
 import { addPayment } from '../lib/plans';
-import { askNotificationPermission } from '../lib/notify';
 import { scheduler } from '../lib/scheduler';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useToast } from '../components/ui';
+import { exactAlarmAccess, notificationAccess, onAccessChange, requestNotificationAccess, type AccessState } from '../lib/permissions';
+import { isNativeApp, openAppSettings, syncNativeReminders } from '../lib/native';
 
 export default function Dashboard() {
   const nav = useNavigate();
-  const [notifyState, setNotifyState] = useState<string>(() =>
-    typeof Notification === 'undefined' ? 'unsupported' : Notification.permission,
-  );
+  // وضعیت دسترسی اعلان به‌صورت غیرهمگام خوانده می‌شود؛ در اپ اندروید مجوز بومی مبنا است
+  const [notifyState, setNotifyState] = useState<AccessState | null>(null);
+  const [alarmState, setAlarmState] = useState<AccessState | null>(null);
+  const native = isNativeApp();
+
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      const [n, a] = await Promise.all([notificationAccess(), exactAlarmAccess()]);
+      if (!alive) return;
+      setNotifyState(n);
+      setAlarmState(a);
+    };
+    void load();
+    const off = onAccessChange(() => { void load(); });
+    return () => { alive = false; off(); };
+  }, []);
   const { unit, cfg } = useApp();
   const toast = useToast();
   const base = todayKey();
@@ -54,29 +69,64 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-4 max-w-6xl mx-auto">
-      {notifyState !== 'granted' ? (
+      {notifyState && notifyState !== 'granted' ? (
         <Card className="border-warn/40 bg-warn-soft/40">
           <div className="flex items-start gap-2.5 min-w-0">
-            <span className="w-9 h-9 rounded-xl bg-warn-soft text-warn flex items-center justify-center shrink-0"><Icon name="bell" className="w-4 h-4" /></span>
+            <span className="w-9 h-9 rounded-xl bg-warn-soft text-warn flex items-center justify-center shrink-0">
+              <Icon name={notifyState === 'unsupported' ? 'bellOff' : 'bell'} className="w-4 h-4" />
+            </span>
             <div className="min-w-0 flex-1">
-              <p className="text-[13px] font-semibold">یادآوری خودکار را فعال کنید</p>
+              <p className="text-[13px] font-semibold truncate">
+                {notifyState === 'denied' ? 'اجازه اعلان رد شده است' : 'یادآوری خودکار را فعال کنید'}
+              </p>
               <p className="text-[11px] text-muted leading-6">
-                برای اینکه اقساط سررسید در همان روز اعلان و پیامک شوند، اجازه اعلان و اجرای پس‌زمینه لازم است.
-                اپ را از منوی مرورگر «نصب» کنید و دکمه زیر را بزنید.
+                {notifyState === 'unsupported'
+                  ? 'این مرورگر اعلان سیستمی ندارد؛ اپ اندروید یا نسخه نصب‌شده (PWA) را باز کنید.'
+                  : notifyState === 'denied'
+                    ? (native
+                      ? 'اجازه را از تنظیمات همین اپ روشن کنید تا اعلان سررسید اقساط نمایش داده شود.'
+                      : 'از قفل آدرس مرورگر → مجوزهای سایت، اعلان را روی «اجازه» بگذارید.')
+                    : 'برای اینکه سررسید اقساط در همان روز اعلان و پیامک شوند، اجازه اعلان و اجرای پس‌زمینه لازم است.'}
               </p>
             </div>
-            <Button
-              size="sm"
-              icon="bell"
-              onClick={async () => {
-                const p = await askNotificationPermission();
-                setNotifyState(p);
-                await scheduler.registerPeriodic();
-                toast.push(p === 'granted' ? 'اعلان‌ها فعال شد' : 'اجازه اعلان داده نشد', p === 'granted' ? 'ok' : 'warn');
-              }}
-            >
-              فعال‌سازی
-            </Button>
+            <div className="flex flex-col gap-1.5 shrink-0">
+              {notifyState !== 'denied' && notifyState !== 'unsupported' ? (
+                <Button
+                  size="sm"
+                  icon="bell"
+                  onClick={async () => {
+                    const p = await requestNotificationAccess();
+                    setNotifyState(p);
+                    setAlarmState(await exactAlarmAccess());
+                    try {
+                      if (native) await syncNativeReminders(180);
+                      else await scheduler.registerPeriodic();
+                    } catch { /* اختیاری */ }
+                    toast.push(
+                      p === 'granted' ? 'اعلان‌ها فعال شد' : p === 'denied' ? 'اجازه اعلان رد شد' : 'برای اجازه اعلان تأیید کنید',
+                      p === 'granted' ? 'ok' : 'warn',
+                    );
+                  }}
+                >
+                  فعال‌سازی
+                </Button>
+              ) : null}
+              {native ? (
+                <Button size="sm" variant="outline" icon="settings" onClick={() => { void openAppSettings(); }}>تنظیمات اپ</Button>
+              ) : null}
+            </div>
+          </div>
+        </Card>
+      ) : null}
+
+      {notifyState === 'granted' && native && alarmState && alarmState !== 'granted' ? (
+        <Card className="border-warn/30 bg-warn-soft/30">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Icon name="clock" className="w-[18px] h-[18px] text-warn shrink-0" />
+            <p className="text-[11px] text-muted leading-6 flex-1 min-w-0">
+              اعلان فعال است، اما «آلارم و یادآور دقیق» روشن نیست؛ یادآوری‌ها ممکن است با تأخیر اجرا شوند.
+            </p>
+            <Button size="sm" variant="outline" icon="clock" onClick={() => nav('/settings')}>تنظیم</Button>
           </div>
         </Card>
       ) : null}

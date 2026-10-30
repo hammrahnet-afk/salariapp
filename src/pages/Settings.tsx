@@ -199,7 +199,7 @@ export default function Settings() {
       <Card>
         <SectionTitle icon="spark" title="درباره سالاری‌اپ" />
         <p className="text-[12px] text-muted leading-7">
-          نسخه {toFa(1)}٫{toFa(0)}٫{toFa(1)} • طراحی‌شده برای فروشگاه‌های لوازم خانگی و آشپزخانه.
+          نسخه {toFa(1)}٫{toFa(0)}٫{toFa(2)} • طراحی‌شده برای فروشگاه‌های لوازم خانگی و آشپزخانه.
           <br />تمام داده‌ها به‌صورت آفلاین روی دستگاه شما ذخیره می‌شود و هیچ اطلاعاتی به سرور دیگری ارسال نمی‌شود.
         </p>
         <div className="flex flex-wrap gap-2 mt-2">

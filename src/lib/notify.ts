@@ -15,6 +15,12 @@ export async function addNotification(n: NewNotification): Promise<number> {
 
 export function showSystemNotification(title: string, body: string): void {
   try {
+    // داخل اپ اندروید، اعلان باید از موتور بومی اندروید برود (WebView اعلان وب ندارد)
+    const cap = (globalThis as any).Capacitor;
+    if (cap?.isNativePlatform?.()) {
+      void import('./native').then((m) => m.nativeNotify(title, body)).catch(() => undefined);
+      return;
+    }
     // اجرای داخل Service Worker
     const sw = self as any;
     if (sw?.registration?.showNotification) {

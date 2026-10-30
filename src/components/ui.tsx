@@ -379,6 +379,136 @@ export function SearchInput({ value, onChange, placeholder = 'جستجو…' }: 
   );
 }
 
+export interface ComboOption {
+  value: string;
+  label: string;
+  hint?: string;
+  keywords?: string;
+  disabled?: boolean;
+  trailing?: React.ReactNode;
+}
+
+/**
+ * لیست کشویی جستجوپذیر (Combobox): کاربر تایپ می‌کند و از لیست باز‌شده انتخاب می‌کند.
+ * برای انتخاب کالا، مشتری و هر فهرست طولانی دیگر.
+ */
+export function Combobox({
+  options, onSelect, placeholder = 'جستجو…', emptyText = 'موردی یافت نشد',
+  hint, maxResults = 50, disabled, autoFocus, className, clearOnSelect = true, label,
+}: {
+  options: ComboOption[];
+  onSelect: (value: string) => void;
+  placeholder?: string;
+  emptyText?: string;
+  hint?: string;
+  maxResults?: number;
+  disabled?: boolean;
+  autoFocus?: boolean;
+  className?: string;
+  clearOnSelect?: boolean;
+  label?: string;
+}) {
+  const [q, setQ] = useState('');
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  const filtered = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    const list = term
+      ? options.filter((o) => `${o.label} ${o.hint ?? ''} ${o.keywords ?? ''}`.toLowerCase().includes(term))
+      : options;
+    return list.slice(0, maxResults);
+  }, [options, q, maxResults]);
+
+  useEffect(() => { setActive(0); }, [q, open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: Event) => {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('touchstart', onDown);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('touchstart', onDown);
+    };
+  }, [open]);
+
+  const choose = (o?: ComboOption) => {
+    if (!o || o.disabled) return;
+    onSelect(o.value);
+    if (clearOnSelect) setQ('');
+    setOpen(false);
+  };
+
+  return (
+    <div className={cx('relative min-w-0', className)} ref={boxRef}>
+      <div className="relative">
+        <Icon name="search" className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
+        <input
+          value={q}
+          disabled={disabled}
+          autoFocus={autoFocus}
+          role="combobox"
+          aria-expanded={open}
+          aria-autocomplete="list"
+          aria-label={label || placeholder}
+          onFocus={() => setOpen(true)}
+          onChange={(e) => { setQ(e.target.value); setOpen(true); }}
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowDown') { e.preventDefault(); setOpen(true); setActive((i) => Math.min(filtered.length - 1, i + 1)); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); setActive((i) => Math.max(0, i - 1)); }
+            else if (e.key === 'Enter') { e.preventDefault(); choose(filtered[active]); }
+            else if (e.key === 'Escape') setOpen(false);
+          }}
+          placeholder={placeholder}
+          className={cx(CONTROL_BASE, CONTROL_HEIGHT.md, 'pr-9 pl-9')}
+        />
+        {q ? (
+          <button type="button" aria-label="پاک کردن" onClick={() => { setQ(''); setOpen(true); }}
+            className="absolute left-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-lg grid place-items-center text-muted hover:bg-surface2">
+            <Icon name="close" className="w-3.5 h-3.5" />
+          </button>
+        ) : (
+          <Icon name="chevDown" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
+        )}
+      </div>
+
+      {open ? (
+        <div role="listbox" className="absolute inset-x-0 top-full mt-1 z-30 rounded-xl border border-line bg-surface shadow-xl max-h-72 overflow-y-auto anim-pop">
+          {hint && !q ? <p className="px-3 pt-2 pb-1 text-[10.5px] text-muted">{hint}</p> : null}
+          {!filtered.length ? (
+            <p className="px-3 py-4 text-[12px] text-muted text-center">{emptyText}</p>
+          ) : filtered.map((o, i) => (
+            <button
+              key={o.value}
+              type="button"
+              role="option"
+              aria-selected={i === active}
+              disabled={o.disabled}
+              onMouseEnter={() => setActive(i)}
+              onClick={() => choose(o)}
+              className={cx(
+                'w-full text-right px-3 py-2 flex items-center gap-2 min-w-0 border-b border-line/60 last:border-0 transition',
+                i === active && !o.disabled ? 'bg-brand-soft/60' : '',
+                o.disabled ? 'opacity-45 cursor-not-allowed' : 'hover:bg-surface2',
+              )}
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block text-[13px] font-medium break-words">{o.label}</span>
+                {o.hint ? <span className="block text-[11px] text-muted mt-0.5 break-words">{o.hint}</span> : null}
+              </span>
+              {o.trailing ? <span className="shrink-0">{o.trailing}</span> : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function Segmented<T extends string>({ value, onChange, options }: { value: T; onChange: (v: T) => void; options: { value: T; label: string; icon?: string }[] }) {
   return (
     <div className="inline-flex p-1 bg-surface2 rounded-xl border border-line gap-1 overflow-x-auto max-w-full">

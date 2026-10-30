@@ -6,10 +6,21 @@ import { deleteProduct, saveProduct, stockValuation } from '../lib/inventory';
 import { compressImage } from '../lib/image';
 import { todayKey } from '../lib/jalali';
 import { money, moneyShort, toFa } from '../lib/format';
-import { Badge, Button, Card, Confirm, EmptyState, Field, Icon, IconButton, Input, MoneyInput, Modal, ProductThumb, SearchInput, SectionTitle, Select, Textarea, cx, useToast } from '../components/ui';
+import { Badge, Button, Card, Confirm, EmptyState, Field, Icon, IconButton, Input, MoneyInput, Modal, SearchInput, SectionTitle, Segmented, Select, Textarea, cx, useToast } from '../components/ui';
 import { useApp } from '../state';
 
 type Sort = 'new' | 'name' | 'qty' | 'value';
+/** چینش فهرست کالا: با عکس / بدون عکس (نام کامل) / ردیفی */
+type View = 'grid' | 'compact' | 'list';
+const VIEW_KEY = 'salari.products.view';
+
+const readView = (): View => {
+  try {
+    const v = localStorage.getItem(VIEW_KEY);
+    if (v === 'grid' || v === 'compact' || v === 'list') return v;
+  } catch { /* حالت خصوصی */ }
+  return 'grid';
+};
 
 const empty = (): Partial<Product> => ({
   name: '', code: '', brand: '', model: '', buyPrice: 0, sellPrice: 0,
@@ -23,8 +34,14 @@ export default function Products() {
   const [q, setQ] = useState('');
   const [cat, setCat] = useState<string>(params.get('cat') || '');
   const [sort, setSort] = useState<Sort>('new');
-  const [view, setView] = useState<'grid' | 'list'>('grid');
+  const [view, setView] = useState<View>(readView);
   const [editing, setEditing] = useState<Partial<Product> | null>(null);
+  const [creating, setCreating] = useState(false);
+
+  const changeView = (v: View) => {
+    setView(v);
+    try { localStorage.setItem(VIEW_KEY, v); } catch { /* بی‌اثر */ }
+  };
   const [confirmId, setConfirmId] = useState<number | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const lowOnly = params.get('filter') === 'low';
@@ -37,7 +54,7 @@ export default function Products() {
 
   useEffect(() => {
     if (params.get('new')) {
-      setEditing(empty());
+      setCreating(true);
       params.delete('new');
       setParams(params, { replace: true });
     }
@@ -76,7 +93,7 @@ export default function Products() {
           icon="box"
           title="مدیریت کالاها و انبار"
           subtitle={`${toFa(filtered.length)} کالا • ارزش انبار ${moneyShort(val.atSell)} ${unit}`}
-          action={<Button size="sm" icon="plus" onClick={() => setEditing(empty())}>کالای جدید</Button>}
+          action={<Button size="sm" icon="plus" onClick={() => { setCreating((c) => !c); setEditing(null); }}>{creating ? 'بستن فرم' : 'کالای جدید'}</Button>}
         />
 
         <div className="flex flex-wrap items-center gap-2">
@@ -91,7 +108,15 @@ export default function Products() {
             <option value="qty">کمترین موجودی</option>
             <option value="value">بیشترین ارزش</option>
           </Select>
-          <IconButton name={view === 'grid' ? 'layers' : 'menu'} label="تغییر نما" variant="outline" onClick={() => setView(view === 'grid' ? 'list' : 'grid')} />
+          <Segmented<View>
+            value={view}
+            onChange={changeView}
+            options={[
+              { value: 'grid', label: 'با عکس', icon: 'image' },
+              { value: 'compact', label: 'بدون عکس', icon: 'box' },
+              { value: 'list', label: 'ردیفی', icon: 'menu' },
+            ]}
+          />
         </div>
 
         <div className="flex flex-wrap items-center gap-2 mt-2.5">
@@ -104,10 +129,19 @@ export default function Products() {
         </div>
       </Card>
 
+      {creating ? (
+        <ProductForm
+          inline
+          product={empty()}
+          categories={categories}
+          onClose={() => setCreating(false)}
+        />
+      ) : null}
+
       {!filtered.length ? (
         <Card><EmptyState icon="box" title={products.length ? 'کالایی با این مشخصات یافت نشد' : 'هنوز کالایی ثبت نشده'}
           hint="اولین کالای فروشگاه خود را اضافه کنید تا انبار و فروش فعال شود."
-          action={<Button icon="plus" onClick={() => setEditing(empty())}>افزودن کالا</Button>} /></Card>
+          action={<Button icon="plus" onClick={() => setCreating(true)}>افزودن کالا</Button>} /></Card>
       ) : view === 'grid' ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2.5">
           {filtered.map((p) => (
@@ -122,8 +156,8 @@ export default function Products() {
                   : p.quantity <= p.minStock ? <span className="absolute top-2 right-2"><Badge tone="warn">روبه‌اتمام</Badge></span> : null}
               </div>
               <div className="p-2.5 min-w-0">
-                <p className="text-[13px] font-semibold truncate" title={p.name}>{p.name}</p>
-                <p className="text-[11px] text-muted truncate">{p.brand || '—'}{p.model ? ` • ${p.model}` : ''}</p>
+                <p className="text-[13px] font-semibold leading-5 line-clamp-2 break-words" title={p.name}>{p.name}</p>
+                <p className="text-[11px] text-muted truncate mt-0.5">{p.brand || '—'}{p.model ? ` • ${p.model}` : ''}</p>
                 <div className="flex items-center justify-between gap-2 mt-1.5 min-w-0">
                   <span className="text-[13px] font-bold nums truncate">{money(p.sellPrice)}</span>
                   <Badge tone={p.quantity <= 0 ? 'danger' : p.quantity <= p.minStock ? 'warn' : 'ok'}>{toFa(p.quantity)} {p.unit}</Badge>
@@ -140,15 +174,46 @@ export default function Products() {
             </Card>
           ))}
         </div>
+      ) : view === 'compact' ? (
+        /* نمای بدون عکس: نام کامل کالا در چند خط نمایش داده می‌شود */
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5">
+          {filtered.map((p) => (
+            <Card key={p.id} className="min-w-0">
+              <div className="flex items-start gap-2 min-w-0">
+                <div className="min-w-0 flex-1">
+                  <p className="text-[13px] font-semibold leading-6 break-words">{p.name}</p>
+                  <p className="text-[11px] text-muted mt-0.5 break-words">
+                    {[p.brand, p.model, p.code].filter(Boolean).join(' • ') || 'بدون برند'}
+                  </p>
+                </div>
+                <Badge tone={p.quantity <= 0 ? 'danger' : p.quantity <= p.minStock ? 'warn' : 'ok'}>{toFa(p.quantity)} {p.unit}</Badge>
+              </div>
+              <div className="flex items-end justify-between gap-2 mt-2 min-w-0">
+                <div className="min-w-0">
+                  <p className="text-[10px] text-muted">قیمت فروش</p>
+                  <p className="text-[13px] font-bold nums">{money(p.sellPrice)}</p>
+                </div>
+                <div className="text-left shrink-0">
+                  <p className="text-[10px] text-muted">خرید</p>
+                  <p className="text-[11px] nums text-muted">{money(p.buyPrice)}</p>
+                </div>
+                <div className="flex gap-1.5 shrink-0">
+                  <IconButton name="edit" label="ویرایش" variant="soft" size="sm" onClick={() => setEditing(p)} />
+                  <IconButton name="trash" label="حذف" variant="danger" size="sm" onClick={() => setConfirmId(p.id!)} />
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
       ) : (
+        /* نمای ردیفی: نام کامل و بدون بریدن */
         <Card pad={false}>
           <div className="divide-y divide-line">
             {filtered.map((p) => (
               <div key={p.id} className="flex items-center gap-3 p-3 min-w-0">
-                <ProductThumb src={p.image} name={p.name} />
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium truncate">{p.name}</p>
-                  <p className="text-[11px] text-muted truncate">{p.code} • {p.brand || 'بدون برند'}</p>
+                  <p className="text-[13px] font-medium leading-6 break-words">{p.name}</p>
+                  <p className="text-[11px] text-muted break-words">{[p.brand || 'بدون برند', p.model, p.code].filter(Boolean).join(' • ')}</p>
                 </div>
                 <div className="hidden sm:block text-left shrink-0 w-28">
                   <p className="text-[12px] font-semibold nums">{money(p.sellPrice)}</p>
@@ -183,7 +248,7 @@ export default function Products() {
   );
 }
 
-function ProductForm({ product, categories, onClose }: { product: Partial<Product>; categories: { id?: number; name: string; icon: string }[]; onClose: () => void }) {
+function ProductForm({ product, categories, onClose, inline = false }: { product: Partial<Product>; categories: { id?: number; name: string; icon: string }[]; onClose: () => void; inline?: boolean }) {
   const toast = useToast();
   const { unit } = useApp();
   const [form, setForm] = useState<Partial<Product>>({ ...empty(), ...product });
@@ -220,17 +285,7 @@ function ProductForm({ product, categories, onClose }: { product: Partial<Produc
 
   const margin = form.sellPrice && form.buyPrice ? Math.round(((form.sellPrice - form.buyPrice) / form.sellPrice) * 100) : 0;
 
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title={form.id ? 'ویرایش کالا' : 'کالای جدید'}
-      size="lg"
-      footer={<>
-        <Button variant="outline" onClick={onClose}>انصراف</Button>
-        <Button icon="check" loading={busy} onClick={submit}>{form.id ? 'ذخیره تغییرات' : 'افزودن کالا'}</Button>
-      </>}
-    >
+  const fields = (
       <div className="grid sm:grid-cols-2 gap-3">
         <div className="sm:col-span-2 flex gap-3 items-start">
           <div className="relative shrink-0">
@@ -303,6 +358,39 @@ function ProductForm({ product, categories, onClose }: { product: Partial<Produc
 
         {err ? <p className="sm:col-span-2 text-[12px] text-danger">{err}</p> : null}
       </div>
+  );
+
+  const actions = (
+    <>
+      <Button variant="outline" onClick={onClose}>انصراف</Button>
+      <Button icon="check" loading={busy} onClick={submit}>{form.id ? 'ذخیره تغییرات' : inline ? 'ثبت کالا' : 'افزودن کالا'}</Button>
+    </>
+  );
+
+  if (inline) {
+    return (
+      <Card className="border-brand/30 min-w-0">
+        <SectionTitle
+          icon="plus"
+          title={form.id ? 'ویرایش کالا' : 'ثبت کالای جدید'}
+          subtitle="نام کامل کالا را وارد کنید؛ بقیه فیلدها اختیاری‌اند"
+          action={<IconButton name="close" label="بستن فرم" onClick={onClose} />}
+        />
+        {fields}
+        <div className="flex items-center justify-end gap-2 mt-3">{actions}</div>
+      </Card>
+    );
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={form.id ? 'ویرایش کالا' : 'کالای جدید'}
+      size="lg"
+      footer={actions}
+    >
+      {fields}
     </Modal>
   );
 }
