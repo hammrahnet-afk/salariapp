@@ -107,12 +107,13 @@ jobs:
           echo "== gradle $(date -u)" | tee -a "../$LOG"
           set -o pipefail
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon --console=plain 2>&1 | tail -n 120 | tee -a "../$LOG"
+          ./gradlew assembleRelease --no-daemon --console=plain 2>&1 | tee -a "../$LOG" | tail -n 40
 
       - name: آماده‌سازی فایل خروجی
         id: apk
         run: |
-          VERSION="${{ github.event.inputs.version || '1.0.0' }}"
+          if [ "${{ github.event_name }}" = "push" ]; then VERSION="${GITHUB_REF_NAME#v}"; else VERSION="${{ github.event.inputs.version || '1.0.0' }}"; fi
+          echo "نسخه: $VERSION" | tee -a "$LOG"
           SRC=$(find android/app/build/outputs/apk/release -name "*.apk" | head -n1)
           echo "فایل ساخته‌شده: ${SRC:-هیچ}" | tee -a "$LOG"
           mkdir -p out
@@ -153,9 +154,13 @@ jobs:
           {
             echo "### ساخت APK ناموفق بود — اجرا \`${{ github.run_id }}\`"
             echo ""
-            echo "آخرین خروجی:"
+            echo "### خطاها:"
             echo '```'
-            tail -n 80 "$LOG" 2>/dev/null || echo "فایل لاگ موجود نیست"
+            grep -iE "what went wrong|error:|FAILURE:|Unresolved|could not|not found" -A6 "$LOG" 2>/dev/null | head -n 60 || true
+            echo '```'
+            echo "### آخرین خروجی:"
+            echo '```'
+            tail -n 60 "$LOG" 2>/dev/null || echo "فایل لاگ موجود نیست"
             echo '```'
           } > comment.md
           gh issue comment 2 --body-file comment.md || echo "ثبت گزارش انجام نشد"
