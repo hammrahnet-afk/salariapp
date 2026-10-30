@@ -1,7 +1,7 @@
 {
   "name": "salariapp",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "سامانه حسابداری، انبار و اقساط لوازم خانگی و آشپزخانه (آفلاین، نصب‌شدنی روی اندروید)",
   "type": "module",
   "scripts": {
@@ -15,6 +15,7 @@
     "@capacitor/android": "^8.6.0",
     "@capacitor/core": "^8.6.0",
     "@capacitor/local-notifications": "^8.3.1",
+    "capacitor-native-settings": "^8.2.0",
     "dexie": "^4.0.8",
     "dexie-react-hooks": "^1.1.7",
     "jalaali-js": "^1.2.7",

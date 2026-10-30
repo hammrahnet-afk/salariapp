@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type PayMethod, type Product } from '../lib/db';
@@ -6,11 +6,13 @@ import { computeTotals, createSale } from '../lib/sales';
 import { createPlan } from '../lib/plans';
 import { formatDate, todayKey } from '../lib/jalali';
 import { money, moneyInWords, toFa } from '../lib/format';
-import { Badge, Button, Card, EmptyState, Field, Icon, IconButton, Input, MoneyInput, Modal, ProductThumb, SearchInput, SectionTitle, Select, cx, useToast } from '../components/ui';
+import {
+  AmountRow, Badge, Button, Card, EmptyState, Field, Icon, IconButton, Input, MoneyInput,
+  Modal, ProductThumb, SearchInput, SectionTitle, Select, Stepper, cx, useToast,
+} from '../components/ui';
 import { useApp } from '../state';
-import { UNIT_LABEL } from '../lib/settings';
 
-interface Line { key: string; productId?: number; name: string; qty: number; price: number; cost: number; stock: number; unit: string }
+interface Line { key: string; productId?: number; name: string; qty: number; price: number; cost: number; stock: number; unit: string; image?: string }
 
 const METHODS: { value: PayMethod; label: string }[] = [
   { value: 'cash', label: 'نقدی' },
@@ -38,7 +40,7 @@ export default function NewSale() {
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('');
   const [saving, setSaving] = useState(false);
-  const [planOpen, setPlanOpen] = useState<{ saleId: number; debt: number; code: string } | null>(null);
+  const [planOpen, setPlanOpen] = useState<{ saleId: number; debt: number } | null>(null);
 
   const products = useLiveQuery(() => db.products.where('archived').equals(0).toArray(), []) ?? [];
   const categories = useLiveQuery(() => db.categories.orderBy('sortOrder').toArray(), []) ?? [];
@@ -53,20 +55,21 @@ export default function NewSale() {
   }, [products, q, cat]);
 
   const totals = useMemo(() => computeTotals(lines, discount, paid, cfg.taxPercent), [lines, discount, paid, cfg.taxPercent]);
+  const qty = lines.reduce((a, l) => a + l.qty, 0);
 
   function addProduct(p: Product) {
     setLines((ls) => {
       const found = ls.find((l) => l.productId === p.id);
-      if (found) {
-        return ls.map((l) => (l.key === found.key ? { ...l, qty: Math.min(l.stock, l.qty + 1) } : l));
-      }
-      return [...ls, { key: String(p.id), productId: p.id, name: p.name, qty: 1, price: p.sellPrice, cost: p.buyPrice, stock: p.quantity, unit: p.unit }];
+      if (found) return ls.map((l) => (l.key === found.key ? { ...l, qty: Math.min(l.stock, l.qty + 1) } : l));
+      return [...ls, {
+        key: String(p.id), productId: p.id, name: p.name, qty: 1,
+        price: p.sellPrice, cost: p.buyPrice, stock: p.quantity, unit: p.unit, image: p.image,
+      }];
     });
   }
 
-  function setLine(key: string, patch: Partial<Line>) {
+  const setLine = (key: string, patch: Partial<Line>) =>
     setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
-  }
 
   async function submit() {
     if (!lines.length) { toast.push('حداقل یک کالا اضافه کنید', 'warn'); return; }
@@ -91,11 +94,8 @@ export default function NewSale() {
       }, cfg.taxPercent);
       toast.push('فاکتور ثبت و انبار به‌روز شد', 'ok');
       const debt = customerId ? Math.max(0, totals.total - paid) : 0;
-      if (debt > 0 && customerId) {
-        setPlanOpen({ saleId, debt, code: '' });
-      } else {
-        nav(`/sales/${saleId}`);
-      }
+      if (debt > 0 && customerId) setPlanOpen({ saleId, debt });
+      else nav(`/sales/${saleId}`);
     } catch (e: any) {
       toast.push(String(e?.message || e), 'danger');
     } finally {
@@ -104,91 +104,125 @@ export default function NewSale() {
   }
 
   return (
-    <div className="grid lg:grid-cols-[1fr_360px] gap-4 max-w-6xl mx-auto items-start">
+    <div className="grid lg:grid-cols-[1fr_380px] gap-4 max-w-6xl mx-auto items-start">
       <div className="space-y-4 min-w-0">
-        {/* مشتری */}
+        {/* ---------------------------- مشتری ---------------------------- */}
         <Card>
-          <SectionTitle icon="users" title="مشتری فاکتور" subtitle={customerId ? 'فروش اعتباری به مشتری ثبت‌شده' : 'فروش نقدی روزانه به مشتری گذرا'} />
-          <div className="grid sm:grid-cols-2 gap-2.5">
-            <Field label="مشتری ثبت‌شده" hint="برای مشتری روزانه خالی بگذارید">
+          <SectionTitle
+            icon="users"
+            title="مشتری فاکتور"
+            subtitle={customerId ? 'فروش اعتباری به مشتری ثبت‌شده' : 'فروش نقدی روزانه به مشتری گذرا'}
+          />
+          <div className="grid sm:grid-cols-2 gap-3 items-end">
+            <Field label="مشتری" hint="برای فروش روزانه خالی بگذارید">
               <Select value={customerId ? String(customerId) : ''} onChange={(e) => setCustomerId(e.target.value ? Number(e.target.value) : null)}>
                 <option value="">— مشتری روزانه (گذرا) —</option>
                 {customers.map((c) => <option key={c.id} value={String(c.id)}>{c.name}{c.phone ? ` • ${c.phone}` : ''}</option>)}
               </Select>
             </Field>
             {customerId ? (
-              <div className="rounded-xl border border-line bg-surface2 p-2.5 min-w-0">
-                <p className="text-[12px] font-medium truncate">{customer?.name}</p>
-                <p className="text-[11px] text-muted nums truncate" dir="ltr">{customer?.phone || 'بدون شماره'}</p>
+              <div className="h-11 px-3 rounded-xl border border-line bg-surface2 flex items-center gap-2 min-w-0">
+                <span className="w-6 h-6 rounded-lg bg-brand-soft text-brand text-[11px] font-bold grid place-items-center shrink-0">
+                  {customer?.name?.slice(0, 1) || 'م'}
+                </span>
+                <span className="text-[13px] font-medium truncate">{customer?.name || 'در حال بارگذاری…'}</span>
+                <span className="text-[11px] text-muted nums mr-auto shrink-0" dir="ltr">{customer?.phone || 'بدون شماره'}</span>
               </div>
             ) : (
-              <Field label="نام مشتری روزانه"><Input value={walkInName} onChange={(e) => setWalkInName(e.target.value)} placeholder="مشتری روزگذر" /></Field>
+              <Field label="نام مشتری روزانه">
+                <Input value={walkInName} onChange={(e) => setWalkInName(e.target.value)} placeholder="مشتری روزگذر" />
+              </Field>
             )}
           </div>
         </Card>
 
-        {/* اقلام */}
+        {/* ---------------------------- اقلام ---------------------------- */}
         <Card>
-          <SectionTitle icon="box" title="اقلام فاکتور" subtitle={`${toFa(lines.length)} قلم`}
-            action={<Button size="sm" variant="outline" icon="plus" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>افزودن کالا</Button>} />
+          <SectionTitle
+            icon="list"
+            title="اقلام فاکتور"
+            subtitle={lines.length ? `${toFa(lines.length)} قلم • ${toFa(qty)} عدد` : 'کالایی اضافه نشده'}
+            action={<Button size="sm" variant="outline" icon="plus" onClick={() => document.getElementById('product-picker')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>افزودن کالا</Button>}
+          />
           {!lines.length ? (
-            <EmptyState icon="card" title="هنوز کالایی اضافه نشده" hint="از فهرست پایین یا دکمه «افزودن کالا» انتخاب کنید." />
+            <EmptyState icon="card" title="هنوز کالایی اضافه نشده" hint="از فهرست پایین یک کالا انتخاب کنید تا به فاکتور اضافه شود." />
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               {lines.map((l) => (
-                <div key={l.key} className="rounded-xl border border-line bg-surface2/50 p-2.5 min-w-0">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <ProductThumb name={l.name} size="sm" src={l.productId ? products.find((p) => p.id === l.productId)?.image : undefined} />
+                <div key={l.key} className="rounded-xl border border-line bg-surface p-3 min-w-0">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <ProductThumb name={l.name} size="sm" src={l.image} />
                     <div className="min-w-0 flex-1">
-                      <p className="text-[13px] font-medium truncate">{l.name}</p>
-                      <p className="text-[10px] text-muted truncate">موجودی {toFa(l.stock)} {l.unit}</p>
+                      <p className="text-[13px] font-semibold truncate">{l.name}</p>
+                      <p className="text-[11px] text-muted truncate">موجودی انبار: {toFa(l.stock)} {l.unit}</p>
                     </div>
-                    <IconButton name="trash" label="حذف قلم" variant="danger" onClick={() => setLines((ls) => ls.filter((x) => x.key !== l.key))} />
+                    <IconButton name="trash" label="حذف قلم" variant="danger" size="sm" onClick={() => setLines((ls) => ls.filter((x) => x.key !== l.key))} />
                   </div>
-                  <div className="grid grid-cols-3 gap-2 mt-2">
+
+                  <div className="grid grid-cols-2 sm:grid-cols-[132px_1fr_1fr] gap-2.5 mt-2.5 items-end">
                     <Field label="مقدار">
-                      <div className="flex items-center gap-1">
-                        <IconButton name="close" label="کم" variant="outline" className="rotate-45 w-8 h-8" onClick={() => setLine(l.key, { qty: Math.max(1, l.qty - 1) })} />
-                        <Input value={toFa(l.qty)} onChange={(e) => setLine(l.key, { qty: Math.max(0, toNum(e.target.value)) })} className="text-center nums h-9" />
-                        <IconButton name="plus" label="زیاد" variant="outline" className="w-8 h-8" onClick={() => setLine(l.key, { qty: Math.min(l.stock, l.qty + 1) })} />
+                      <Stepper
+                        value={l.qty}
+                        min={1}
+                        max={Math.max(1, l.stock)}
+                        onChange={(n) => setLine(l.key, { qty: n })}
+                        suffix={l.unit}
+                      />
+                    </Field>
+                    <Field label={`قیمت واحد (${unit})`}>
+                      <MoneyInput value={l.price} onChange={(n) => setLine(l.key, { price: n })} />
+                    </Field>
+                    <Field label="جمع قلم">
+                      <div className="h-11 px-3 rounded-xl border border-line bg-surface2 flex items-center justify-start nums text-sm font-bold tabular-nums truncate">
+                        {money(l.qty * l.price)}
                       </div>
                     </Field>
-                    <Field label={`فی (${unit})`}><MoneyInput value={l.price} onChange={(n) => setLine(l.key, { price: n })} className="h-9" /></Field>
-                    <Field label="جمع"><div className="h-9 px-2 rounded-xl bg-surface border border-line flex items-center justify-center nums text-[13px] font-semibold truncate">{money(l.qty * l.price)}</div></Field>
                   </div>
-                  {l.qty > l.stock ? <p className="text-[11px] text-danger mt-1">بیش از موجودی انبار است.</p> : null}
+                  {l.qty > l.stock ? <p className="text-[11px] text-danger mt-1.5">مقدار وارد‌شده بیش از موجودی انبار است.</p> : null}
                 </div>
               ))}
             </div>
           )}
         </Card>
 
-        {/* انتخاب کالا */}
+        {/* -------------------------- انتخاب کالا -------------------------- */}
         <Card>
-          <SectionTitle icon="search" title="انتخاب کالا از انبار" subtitle="برای افزودن روی کالا بزنید" />
-          <div className="flex flex-wrap gap-2">
-            <div className="flex-1 min-w-[180px]"><SearchInput value={q} onChange={setQ} placeholder="جستجوی کالا…" /></div>
-            <Select value={cat} onChange={(e) => setCat(e.target.value)} className="w-auto min-w-[130px]">
+          <div id="product-picker" />
+          <SectionTitle icon="search" title="انتخاب کالا از انبار" subtitle="برای افزودن، روی کالا بزنید" />
+          <div className="grid grid-cols-[1fr_auto] gap-2 items-center">
+            <SearchInput value={q} onChange={setQ} placeholder="جستجوی نام، برند یا کد کالا…" />
+            <Select value={cat} onChange={(e) => setCat(e.target.value)} className="w-auto min-w-[120px]">
               <option value="">همه دسته‌ها</option>
               {categories.map((c) => <option key={c.id} value={String(c.id)}>{c.icon} {c.name}</option>)}
             </Select>
           </div>
-          {!shown.length ? <EmptyState icon="box" title="کالایی یافت نشد" /> : (
+          {!shown.length ? (
+            <EmptyState icon="box" title={products.length ? 'کالایی با این مشخصات یافت نشد' : 'هنوز کالایی ثبت نشده'} />
+          ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-3">
               {shown.map((p) => (
-                <button key={p.id} type="button" disabled={p.quantity <= 0}
+                <button
+                  key={p.id}
+                  type="button"
+                  disabled={p.quantity <= 0}
                   onClick={() => addProduct(p)}
-                  className={cx('text-right rounded-xl border p-2 transition min-w-0', p.quantity <= 0 ? 'border-line opacity-50' : 'border-line hover:border-brand bg-surface2/50 active:scale-[.98]')}>
+                  className={cx(
+                    'text-right rounded-xl border p-2.5 transition min-w-0 h-full text-right',
+                    p.quantity <= 0 ? 'border-line opacity-50 cursor-not-allowed' : 'border-line bg-surface hover:border-brand active:scale-[.98]',
+                  )}
+                >
                   <div className="flex items-center gap-2 min-w-0">
                     <ProductThumb src={p.image} name={p.name} size="sm" />
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <p className="text-[12px] font-medium truncate">{p.name}</p>
                       <p className="text-[11px] nums text-brand truncate">{money(p.sellPrice)}</p>
                     </div>
                   </div>
-                  <div className="mt-1.5 flex items-center justify-between gap-1 min-w-0">
-                    <Badge tone={p.quantity <= 0 ? 'danger' : p.quantity <= p.minStock ? 'warn' : 'ok'}>{toFa(p.quantity)} {p.unit}</Badge>
-                    {p.brand ? <span className="text-[10px] text-muted truncate">{p.brand}</span> : null}
+                  <div className="mt-2 flex items-center justify-between gap-1 min-w-0">
+                    <Badge tone={p.quantity <= 0 ? 'danger' : p.quantity <= p.minStock ? 'warn' : 'ok'}>
+                      {toFa(p.quantity)} {p.unit}
+                    </Badge>
+                    <span className="text-[10px] text-muted truncate">{p.brand || p.code}</span>
                   </div>
                 </button>
               ))}
@@ -197,55 +231,88 @@ export default function NewSale() {
         </Card>
       </div>
 
-      {/* جمع‌بندی */}
+      {/* ---------------------------- جمع‌بندی ---------------------------- */}
       <div className="lg:sticky lg:top-[70px] space-y-3 min-w-0">
         <Card>
-          <SectionTitle icon="wallet" title="جمع‌بندی فاکتور" />
-          <div className="space-y-2 text-[13px]">
-            <Row label="جمع اقلام" value={money(totals.subtotal)} />
-            {cfg.taxPercent ? <Row label={`مالیات ${toFa(cfg.taxPercent)}٪`} value={money(totals.total - (totals.subtotal - totals.discount))} /> : null}
-            <div className="flex items-center justify-between gap-2 min-w-0">
-              <span className="text-muted truncate">تخفیف</span>
-              <div className="w-32"><MoneyInput value={discount} onChange={setDiscount} className="h-9 text-right" /></div>
-            </div>
-            <div className="h-px bg-line my-1" />
-            <Row label="مبلغ قابل پرداخت" value={money(totals.total)} bold />
-            {customerId ? (
-              <div className="flex items-center justify-between gap-2 min-w-0">
-                <span className="text-muted truncate">مبلغ دریافتی</span>
-                <div className="w-32"><MoneyInput value={paid} onChange={setPaid} className="h-9 text-right" /></div>
-              </div>
-            ) : null}
-            <Row label={customerId ? 'باقی‌مانده' : 'دریافت نقدی'} value={money(customerId ? totals.debt : totals.total)} tone={customerId && totals.debt > 0 ? 'danger' : 'ok'} bold />
-            <Row label="سود فاکتور" value={money(totals.profit)} tone="ok" />
-          </div>
-          {totals.total > 0 ? <p className="text-[10px] text-muted mt-2 leading-5">{moneyInWords(totals.total)} {unit}</p> : null}
+          <SectionTitle icon="wallet" title="جمع‌بندی فاکتور" subtitle={formatDate(date, true)} />
 
-          <div className="grid grid-cols-2 gap-2 mt-3">
-            <Field label="تاریخ"><Input value={date} onChange={(e) => setDate(e.target.value)} className="nums h-9" placeholder="1404-08-08" /></Field>
+          <div className="rounded-xl bg-surface2/70 border border-line px-3 py-2.5 space-y-1">
+            <AmountRow label="جمع اقلام" value={money(totals.subtotal)} />
+            {cfg.taxPercent ? (
+              <AmountRow label={`مالیات ${toFa(cfg.taxPercent)}٪`} value={money(totals.total - (totals.subtotal - totals.discount))} />
+            ) : null}
+            <AmountRow label="تخفیف" value={money(totals.discount)} tone={totals.discount ? 'ok' : 'muted'} />
+            <div className="h-px bg-line my-1.5" />
+            <AmountRow label="مبلغ قابل پرداخت" value={money(totals.total)} strong />
+            {customerId ? <AmountRow label="دریافت‌شده" value={money(totals.paid)} /> : null}
+            <AmountRow
+              label={customerId ? 'باقی‌مانده' : 'دریافت نقدی'}
+              value={money(customerId ? totals.debt : totals.total)}
+              tone={customerId && totals.debt > 0 ? 'danger' : 'ok'}
+              strong
+            />
+            <AmountRow label="سود فاکتور" value={money(totals.profit)} tone="ok" />
+          </div>
+          {totals.total > 0 ? (
+            <p className="text-[10.5px] text-muted mt-2 leading-5">{moneyInWords(totals.total)} {unit}</p>
+          ) : null}
+
+          <div className="grid grid-cols-2 gap-3 mt-3">
+            <Field label={`تخفیف (${unit})`}>
+              <MoneyInput value={discount} onChange={setDiscount} />
+            </Field>
+            {customerId ? (
+              <Field label={`دریافتی (${unit})`}>
+                <MoneyInput value={paid} onChange={setPaid} />
+              </Field>
+            ) : (
+              <Field label="دریافت">
+                <div className="h-11 px-3 rounded-xl border border-line bg-surface2 flex items-center justify-between gap-2">
+                  <span className="text-[12px] text-muted truncate">نقدی کامل</span>
+                  <span className="text-[12px] font-semibold nums truncate">{money(totals.total)}</span>
+                </div>
+              </Field>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 mt-3">
+            <Field label="تاریخ فاکتور">
+              <Input value={date} onChange={(e) => setDate(e.target.value)} className="nums" placeholder="1404-08-08" />
+            </Field>
             <Field label="روش پرداخت">
-              <Select value={method} onChange={(e) => setMethod(e.target.value as PayMethod)} className="h-9">
+              <Select value={method} onChange={(e) => setMethod(e.target.value as PayMethod)}>
                 {METHODS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
               </Select>
             </Field>
           </div>
-          <Field label="یادداشت فاکتور" className="mt-2">
+
+          <Field label="یادداشت فاکتور" className="mt-3">
             <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="گارانتی، رنگ، تحویل و…" />
           </Field>
 
-          <div className="flex gap-2 mt-3">
-            <Button block icon="check" loading={saving} onClick={submit}>ثبت فاکتور</Button>
-            <Button variant="outline" icon="refresh" onClick={() => { setLines([]); setDiscount(0); setPaid(0); setNote(''); }}>پاک کردن</Button>
+          <div className="flex items-stretch gap-2 mt-3">
+            <Button block icon="check" loading={saving} onClick={submit} disabled={!lines.length}>ثبت فاکتور</Button>
+            <IconButton
+              name="refresh"
+              label="پاک کردن فرم"
+              variant="outline"
+              size="lg"
+              onClick={() => { setLines([]); setDiscount(0); setPaid(0); setNote(''); }}
+            />
           </div>
-          <p className="text-[10px] text-muted mt-2 leading-5">
-            {formatDate(date, true)} • با ثبت فاکتور، موجودی انبار به‌صورت خودکار کسر و سند انبار صادر می‌شود.
+          <p className="text-[10.5px] text-muted mt-2 leading-5 flex items-start gap-1">
+            <Icon name="shield" className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+            با ثبت فاکتور، موجودی انبار کسر و سند انبار صادر می‌شود.
           </p>
         </Card>
       </div>
 
-      {/* پیشنهاد قسط‌بندی */}
       {planOpen ? (
-        <Modal open onClose={() => nav(`/sales/${planOpen.saleId}`)} title="مانده فاکتور را قسط‌بندی کنید؟" size="sm"
+        <Modal
+          open
+          onClose={() => nav(`/sales/${planOpen.saleId}`)}
+          title="مانده فاکتور را قسط‌بندی می‌کنید؟"
+          size="sm"
           footer={<>
             <Button variant="outline" onClick={() => nav(`/sales/${planOpen.saleId}`)}>بعداً</Button>
             <Button icon="calendar" onClick={async () => {
@@ -254,7 +321,8 @@ export default function NewSale() {
               toast.push('قرارداد اقساط ساخته شد', 'ok');
               nav(`/customers/${customerId}`);
             }}>قسط‌بندی ۶ ماهه</Button>
-          </>}>
+          </>}
+        >
           <p className="text-sm text-muted leading-7">
             مانده این فاکتور <b className="nums text-danger">{money(planOpen.debt)}</b> {unit} است. می‌توانید همین حالا یک برنامه ۶ قسطه بسازید یا بعداً از صفحه مشتری اقدام کنید.
           </p>
@@ -262,18 +330,4 @@ export default function NewSale() {
       ) : null}
     </div>
   );
-}
-
-function Row({ label, value, bold, tone }: { label: string; value: string; bold?: boolean; tone?: 'ok' | 'danger' }) {
-  return (
-    <div className="flex items-center justify-between gap-2 min-w-0">
-      <span className={cx('truncate', bold ? 'font-semibold' : 'text-muted')}>{label}</span>
-      <span className={cx('nums truncate', bold && 'text-base font-bold', tone === 'ok' && 'text-ok', tone === 'danger' && 'text-danger')}>{value}</span>
-    </div>
-  );
-}
-
-function toNum(v: string): number {
-  const n = Number(v.replace(/[^\d۰-۹]/g, '').replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))));
-  return Number.isFinite(n) ? n : 0;
 }

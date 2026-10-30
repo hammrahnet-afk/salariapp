@@ -20,7 +20,7 @@ export default defineConfig({
         test: {
           name: 'ui',
           environment: 'jsdom',
-          include: ['tests/ui.test.tsx', 'tests/flow.test.tsx', 'tests/dbg.test.tsx'],
+          include: ['tests/ui.test.tsx', 'tests/flow.test.tsx', 'tests/forms.test.tsx'],
           testTimeout: 30000,
         },
       },

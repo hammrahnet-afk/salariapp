@@ -15,6 +15,12 @@ const PATHS: Record<string, string> = {
   message: 'M21 11.5a8.5 8.5 0 0 1-12.4 7.5L3 21l2-5.6A8.5 8.5 0 1 1 21 11.5z',
   settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2v.2a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-3-1.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0-1.2-2.9H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.3-3l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 2.9-1.2V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 3 1.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0 1.2 2.9h.2a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.6 1z',
   plus: 'M12 5v14M5 12h14',
+  minus: 'M5 12h14',
+  battery: 'M2 8h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H2zM22 11v2M5 11v2',
+  lock: 'M5 11h14v10H5zM8 11V7a4 4 0 0 1 8 0v4',
+  bellOff: 'M13.7 21a2 2 0 0 1-3.4 0M18.6 5.4A6 6 0 0 0 6 8c0 7-3 9-3 9h13M2 2l20 20',
+  list: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01',
+  drag: 'M9 6h.01M9 12h.01M9 18h.01M15 6h.01M15 12h.01M15 18h.01',
   edit: 'M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z',
   trash: 'M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0-1 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 6',
   search: 'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zm10 2-4.3-4.3',
@@ -101,7 +107,9 @@ export function Button({
   );
 }
 
-export function IconButton({ name, label, className, variant = 'ghost', ...rest }: React.ButtonHTMLAttributes<HTMLButtonElement> & { name: string; label: string; variant?: BtnVariant }) {
+export function IconButton({
+  name, label, className, variant = 'ghost', size = 'md', ...rest
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { name: string; label: string; variant?: BtnVariant; size?: 'sm' | 'md' | 'lg' }) {
   const variants: Record<BtnVariant, string> = {
     primary: 'bg-brand text-brand-ink',
     soft: 'bg-brand-soft text-brand',
@@ -110,9 +118,11 @@ export function IconButton({ name, label, className, variant = 'ghost', ...rest 
     danger: 'text-danger hover:bg-danger-soft',
     warn: 'text-warn hover:bg-warn-soft',
   };
+  const box = { sm: 'w-8 h-8 rounded-lg', md: 'w-9 h-9 rounded-lg', lg: 'w-11 h-11 rounded-xl' }[size];
+  const ico = { sm: 'w-4 h-4', md: 'w-[18px] h-[18px]', lg: 'w-5 h-5' }[size];
   return (
-    <button {...rest} title={label} aria-label={label} className={cx('inline-flex items-center justify-center w-9 h-9 rounded-lg transition active:scale-95', variants[variant], className)}>
-      <Icon name={name} className="w-[18px] h-[18px]" />
+    <button {...rest} title={label} aria-label={label} className={cx('inline-flex items-center justify-center transition active:scale-95 shrink-0 disabled:opacity-40', box, variants[variant], className)}>
+      <Icon name={name} className={ico} />
     </button>
   );
 }
@@ -181,33 +191,48 @@ export function Field({ label, hint, error, required, children, className }: { l
   );
 }
 
-const inputCls = 'w-full h-11 px-3 rounded-xl border border-line bg-surface2 text-ink placeholder:text-muted/70 outline-none transition focus:border-brand focus:bg-surface focus:ring-2 focus:ring-brand/15';
+/** پایه یکسان همه کنترل‌ها: ارتفاع، حاشیه، گردی و حالت فوکوس */
+export const CONTROL_BASE =
+  'w-full rounded-xl border border-line bg-surface2 text-ink placeholder:text-muted/70 outline-none transition focus:border-brand focus:bg-surface focus:ring-2 focus:ring-brand/15 disabled:opacity-60 disabled:cursor-not-allowed';
 
-export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(function Input({ className, ...rest }, ref) {
-  return <input ref={ref} {...rest} className={cx(inputCls, className)} />;
-});
+export type ControlSize = 'md' | 'sm';
+export const CONTROL_HEIGHT: Record<ControlSize, string> = { md: 'h-11', sm: 'h-10' };
+const inputCls = cx(CONTROL_BASE, CONTROL_HEIGHT.md, 'px-3');
 
-export function Select({ className, children, ...rest }: React.SelectHTMLAttributes<HTMLSelectElement>) {
+export const Input = React.forwardRef<HTMLInputElement, Omit<React.InputHTMLAttributes<HTMLInputElement>, 'size'> & { size?: ControlSize }>(
+  function Input({ className, size = 'md', ...rest }, ref) {
+    return <input ref={ref} {...rest} className={cx(CONTROL_BASE, CONTROL_HEIGHT[size], 'px-3', className)} />;
+  },
+);
+
+export function Select({ className, children, size = 'md', ...rest }: Omit<React.SelectHTMLAttributes<HTMLSelectElement>, 'size'> & { size?: ControlSize }) {
   return (
-    <div className="relative">
-      <select {...rest} className={cx(inputCls, 'pl-9 appearance-none', className)}>{children}</select>
+    <div className="relative min-w-0">
+      <select {...rest} className={cx(CONTROL_BASE, CONTROL_HEIGHT[size], 'pl-9 pr-3 appearance-none truncate', className)}>{children}</select>
       <Icon name="chevDown" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
     </div>
   );
 }
 
 export function Textarea({ className, ...rest }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea {...rest} className={cx(inputCls, 'h-auto py-2.5 leading-6 resize-y min-h-[84px]', className)} />;
+  return <textarea {...rest} className={cx(CONTROL_BASE, 'px-3 py-2.5 leading-6 resize-y min-h-[84px]', className)} />;
 }
 
-/** ورودی مبلغ: ارقام فارسی + جداکننده هزارگان */
-export function MoneyInput({ value, onChange, placeholder, className, ...rest }: Omit<React.InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'> & { value: number | string; onChange: (n: number) => void }) {
+/** ورودی مبلغ: ارقام فارسی + جداکننده هزارگان (با واحد اختیاری داخل کادر) */
+export function MoneyInput({
+  value, onChange, placeholder, className, unit, size = 'md', ...rest
+}: Omit<React.InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'size'> & {
+  value: number | string;
+  onChange: (n: number) => void;
+  unit?: string;
+  size?: ControlSize;
+}) {
   const [text, setText] = useState(() => formatMoneyText(value));
   const focused = useRef(false);
   useEffect(() => {
     if (!focused.current) setText(formatMoneyText(value));
   }, [value]);
-  return (
+  const input = (
     <input
       {...rest}
       inputMode="numeric"
@@ -220,8 +245,92 @@ export function MoneyInput({ value, onChange, placeholder, className, ...rest }:
         onChange(n);
       }}
       placeholder={placeholder}
-      className={cx(inputCls, 'text-left nums font-medium tracking-tight', className)}
+      className={cx(
+        CONTROL_BASE,
+        CONTROL_HEIGHT[size],
+        'text-left nums font-medium tracking-tight',
+        unit ? 'pl-3 pr-14' : 'px-3',
+        className,
+      )}
     />
+  );
+  if (!unit) return input;
+  return (
+    <div className="relative min-w-0">
+      {input}
+      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-muted pointer-events-none select-none">{unit}</span>
+    </div>
+  );
+}
+
+/** شمارنده مقدار با دکمه‌های هم‌اندازه (جایگزین دکمه‌های پراکنده +/-) */
+export function Stepper({
+  value, onChange, min = 0, max = 9999, step = 1, size = 'md', suffix,
+}: {
+  value: number;
+  onChange: (n: number) => void;
+  min?: number;
+  max?: number;
+  step?: number;
+  size?: ControlSize;
+  suffix?: string;
+}) {
+  const clamp = (n: number) => Math.min(max, Math.max(min, Number.isFinite(n) ? n : min));
+  return (
+    <div className={cx('flex items-stretch overflow-hidden', CONTROL_BASE, CONTROL_HEIGHT[size], 'p-0 focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/15')}>
+      <button
+        type="button"
+        aria-label="کاهش"
+        disabled={value <= min}
+        onClick={() => onChange(clamp(value - step))}
+        className="w-10 shrink-0 grid place-items-center text-muted transition hover:bg-surface active:scale-95 disabled:opacity-35"
+      >
+        <Icon name="minus" className="w-4 h-4" stroke={2.2} />
+      </button>
+      <div className="flex-1 min-w-0 flex items-center justify-center gap-1 border-x border-line bg-surface/60">
+        <input
+          inputMode="numeric"
+          aria-label="مقدار"
+          value={toFa(value)}
+          onChange={(e) => {
+            const digits = toEn(e.target.value).replace(/[^\d]/g, '');
+            onChange(clamp(digits === '' ? min : Number(digits)));
+          }}
+          className="w-full min-w-0 bg-transparent text-center text-sm font-semibold nums outline-none"
+        />
+        {suffix ? <span className="text-[10px] text-muted shrink-0 pl-1 select-none">{suffix}</span> : null}
+      </div>
+      <button
+        type="button"
+        aria-label="افزایش"
+        disabled={value >= max}
+        onClick={() => onChange(clamp(value + step))}
+        className="w-10 shrink-0 grid place-items-center text-brand transition hover:bg-surface active:scale-95 disabled:opacity-35"
+      >
+        <Icon name="plus" className="w-4 h-4" stroke={2.2} />
+      </button>
+    </div>
+  );
+}
+
+/** ردیف خوانا برای جمع‌بندی مبالغ (عدد همیشه راست‌چین و هم‌تراز) */
+export function AmountRow({
+  label, value, tone, strong, className,
+}: {
+  label: React.ReactNode;
+  value: React.ReactNode;
+  tone?: 'ok' | 'danger' | 'warn' | 'muted';
+  strong?: boolean;
+  className?: string;
+}) {
+  const tones = { ok: 'text-ok', danger: 'text-danger', warn: 'text-warn', muted: 'text-muted' };
+  return (
+    <div className={cx('flex items-baseline justify-between gap-2 min-w-0 py-0.5', className)}>
+      <span className={cx('truncate text-[12px]', strong ? 'font-semibold text-ink' : 'text-muted')}>{label}</span>
+      <span className={cx('shrink-0 nums tabular-nums text-left', strong ? 'text-base font-bold' : 'text-[13px] font-medium', tone ? tones[tone] : '')}>
+        {value}
+      </span>
+    </div>
   );
 }
 
