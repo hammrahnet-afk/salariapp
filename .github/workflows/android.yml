@@ -68,8 +68,7 @@ jobs:
               -storepass salari1404 -keypass salari1404 \
               -dname "CN=Salari App, OU=Mobile, O=Salari, L=Tehran, ST=Tehran, C=IR"
             git add -f salari-release.keystore
-            git -c user.name="salari-ci" -c user.email="ci@salari.app" \
-              commit -m "chore(android): ساخت کلید امضای ثابت برای به‌روزرسانی نسخه‌ها"
+            git -c user.name="salari-ci" -c user.email="ci@salari.app" commit -m "chore(android): ساخت کلید امضای ثابت برای به‌روزرسانی نسخه‌ها"
             git push origin "HEAD:${GITHUB_REF_NAME}" || echo "پوش کلید انجام نشد (مهم نیست)"
           fi
 
@@ -93,7 +92,7 @@ jobs:
         run: |
           VERSION="${{ github.event.inputs.version || '1.0.0' }}"
           SRC=$(find android/app/build/outputs/apk/release -name "*.apk" | head -n1)
-          echo "فایل: $SRC"
+          echo "فایل ساخته‌شده: $SRC"
           mkdir -p out
           cp "$SRC" "out/salariapp-$VERSION.apk"
           ls -lh out
@@ -112,13 +111,14 @@ jobs:
         run: |
           VERSION="${{ steps.apk.outputs.version }}"
           TAG="v$VERSION"
-          gh release view "$TAG" >/dev/null 2>&1 || \
-            gh release create "$TAG" \
-              --title "سالاری‌اپ نسخه $VERSION" \
-              --notes "نصب اپ اندروید حسابداری لوازم خانگی سالاری‌اپ.
+          cat > release-notes.md <<'NOTES'
+          ### سالاری‌اپ — نصب روی اندروید
 
-- فایل \`salariapp-$VERSION.apk\` را روی گوشی اندروید دانلود و نصب کنید.
-- نصب از منابع ناشناس (Install unknown apps) باید برای مرورگر/مدیر فایل مجاز باشد.
-- همهٔ داده‌ها روی خود گوشی ذخیره می‌شود؛ برنامه بدون اینترنت کار می‌کند."
+          - فایل APK را دانلود و روی گوشی نصب کنید.
+          - برای نصب، اجازه «نصب برنامه از منابع ناشناس» را به مرورگر یا مدیر فایل بدهید.
+          - تمام داده‌ها روی خود گوشی ذخیره می‌شود و برنامه بدون اینترنت کار می‌کند.
+          - اعلان سررسید اقساط به‌صورت بومی (حتی با بسته بودن برنامه) نمایش داده می‌شود.
+          NOTES
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "سالاری‌اپ نسخه $VERSION" --notes-file release-notes.md
           gh release upload "$TAG" "out/salariapp-$VERSION.apk" --clobber
           echo "https://github.com/${{ github.repository }}/releases/tag/$TAG"
