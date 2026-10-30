@@ -18,11 +18,12 @@ android {
     }
     signingConfigs {
         release {
-            // کلید امضا در CI ساخته و در مخزن نگه‌داری می‌شود تا نسخه‌های بعدی
-            // روی نسخه نصب‌شده قبلی به‌روزرسانی شوند (بدون نیاز به حذف برنامه)
-            def ks = file('salari-release.keystore')
+            // کلید امضای ثابت پروژه (PKCS12) تا نسخه‌های بعدی روی نسخه نصب‌شده
+            // به‌روزرسانی شوند و داده‌های کاربر پاک نشود.
+            def ks = file('salari-release.p12')
             if (ks.exists()) {
                 storeFile ks
+                storeType "PKCS12"
                 storePassword System.getenv('SALARI_STORE_PASSWORD') ?: 'salari1404'
                 keyAlias System.getenv('SALARI_KEY_ALIAS') ?: 'salari'
                 keyPassword System.getenv('SALARI_KEY_PASSWORD') ?: 'salari1404'
@@ -34,7 +35,7 @@ android {
             minifyEnabled false
             shrinkResources false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-            if (file('salari-release.keystore').exists()) {
+            if (file('salari-release.p12').exists()) {
                 signingConfig signingConfigs.release
             }
         }

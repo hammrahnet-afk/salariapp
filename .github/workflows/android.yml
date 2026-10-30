@@ -83,24 +83,6 @@ jobs:
           set -o pipefail
           npx cap sync android 2>&1 | tee -a "$LOG"
 
-      - name: ساخت کلید امضا (فقط بار اول)
-        run: |
-          echo "== keystore $(date -u)" | tee -a "$LOG"
-          cd android/app
-          if [ ! -f salari-release.keystore ]; then
-            keytool -genkeypair \
-              -keystore salari-release.keystore \
-              -alias salari \
-              -keyalg RSA -keysize 2048 -validity 10950 \
-              -storepass salari1404 -keypass salari1404 \
-              -dname "CN=Salari App, OU=Mobile, O=Salari, L=Tehran, ST=Tehran, C=IR" 2>&1 | tee -a "../../$LOG"
-            git add -f salari-release.keystore
-            git -c user.name="salari-ci" -c user.email="ci@salari.app" commit -m "chore(android): ساخت کلید امضای ثابت برای به‌روزرسانی نسخه‌ها" || true
-            git push origin "HEAD:${GITHUB_REF_NAME}" 2>&1 | tee -a "../../$LOG" || true
-          else
-            echo "کلید امضا از قبل موجود است" | tee -a "../../$LOG"
-          fi
-
       - name: ساخت APK
         working-directory: android
         run: |
